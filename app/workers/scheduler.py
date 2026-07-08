@@ -1,41 +1,43 @@
-"""Planificateur alternatif pour enfiler les tâches périodiques via Redis."""
+"""Planificateur pour enfiler les tâches périodiques via Redis."""
 
 import asyncio
 import logging
 import signal
-import sys
 
 from arq import create_pool
 from arq.connections import RedisSettings
 
 from app.config import get_settings
-from app.db.session import init_db
+from app.db.session import async_session, init_db
+from app.services.runtime_config import RuntimeConfig, TASK_META
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-TASKS = [
-    ("sonarr_monitor", "sonarr_monitor_interval"),
-    ("radarr_monitor", "radarr_monitor_interval"),
-    ("upgrade_check", "upgrade_check_interval"),
-    ("import_monitor", "import_check_interval"),
-    ("anime_handler", "anime_check_interval"),
-]
+INTERVAL_KEYS = {
+    "sonarr_monitor": "sonarr_monitor_interval",
+    "radarr_monitor": "radarr_monitor_interval",
+    "upgrade_check": "upgrade_check_interval",
+    "import_monitor": "import_check_interval",
+    "anime_handler": "anime_check_interval",
+}
 
 
 async def run_scheduler() -> None:
-    settings = get_settings()
+    env = get_settings()
     await init_db()
 
-    redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
-    intervals = {name: getattr(settings, attr) for name, attr in TASKS}
+    redis = await create_pool(RedisSettings.from_dsn(env.redis_url))
     last_run: dict[str, float] = {}
 
     logger.info("Scheduler MediaGuard démarré")
 
-    for task_name, _ in TASKS:
-        job = await redis.enqueue_job(task_name)
-        logger.info("Tâche initiale %s enfilée (job=%s)", task_name, job.job_id if job else None)
+    for task in TASK_META:
+        async with async_session() as db:
+            cfg = RuntimeConfig(db)
+            if await cfg.get_bool(task["enabled_key"]):
+                job = await redis.enqueue_job(task["name"])
+                logger.info("Tâche initiale %s enfilée (job=%s)", task["name"], job.job_id if job else None)
 
     stop = asyncio.Event()
 
@@ -47,13 +49,19 @@ async def run_scheduler() -> None:
         loop.add_signal_handler(sig, _handle_signal)
 
     while not stop.is_set():
-        now = asyncio.get_event_loop().time()
-        for task_name, interval in intervals.items():
-            prev = last_run.get(task_name, 0)
-            if now - prev >= interval:
-                job = await redis.enqueue_job(task_name)
-                last_run[task_name] = now
-                logger.info("Tâche %s enfilée (job=%s)", task_name, job.job_id if job else None)
+        now = loop.time()
+        async with async_session() as db:
+            cfg = RuntimeConfig(db)
+            for task in TASK_META:
+                name = task["name"]
+                if not await cfg.get_bool(task["enabled_key"]):
+                    continue
+                interval = await cfg.get_int(INTERVAL_KEYS[name])
+                prev = last_run.get(name, 0)
+                if now - prev >= interval:
+                    job = await redis.enqueue_job(name)
+                    last_run[name] = now
+                    logger.info("Tâche %s enfilée (job=%s)", name, job.job_id if job else None)
 
         try:
             await asyncio.wait_for(stop.wait(), timeout=30)

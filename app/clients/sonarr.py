@@ -8,10 +8,10 @@ from app.config import get_settings
 
 
 class SonarrClient:
-    def __init__(self) -> None:
+    def __init__(self, base_url: str | None = None, api_key: str | None = None) -> None:
         settings = get_settings()
-        self.base_url = settings.sonarr_url.rstrip("/")
-        self.api_key = settings.sonarr_api_key
+        self.base_url = (base_url or settings.sonarr_url).rstrip("/")
+        self.api_key = api_key if api_key is not None else settings.sonarr_api_key
         self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -67,13 +67,19 @@ class SonarrClient:
         return await self.get("/queue", page=1, pageSize=100, includeUnknownSeriesItems=True)
 
     async def get_history(self, page: int = 1, page_size: int = 50) -> dict:
-        return await self.get("/history", page=page, pageSize=page_size, eventType="downloadFolderImported")
+        return await self.get("/history", page=page, pageSize=page_size)
 
     async def get_episode_file(self, file_id: int) -> dict:
         return await self.get(f"/episodefile/{file_id}")
 
     async def search_releases(self, episode_id: int) -> list[dict]:
         return await self.post("/release", params={"episodeId": episode_id})
+
+    async def trigger_episode_search(self, episode_ids: list[int]) -> dict:
+        return await self.post("/command", {"name": "EpisodeSearch", "episodeIds": episode_ids})
+
+    async def get_tags(self) -> list[dict]:
+        return await self.get("/tag")
 
     async def get_system_status(self) -> dict:
         return await self.get("/system/status")

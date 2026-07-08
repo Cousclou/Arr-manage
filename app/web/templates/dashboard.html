@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Tableau de bord — MediaGuard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Tableau de bord</h1>
+  {% if dry_run %}
+  <span class="badge badge-warn">Mode simulation actif</span>
+  {% endif %}
+</div>
+
+{% if request.query_params.get('triggered') %}
+<div class="alert alert-success">Tâche lancée avec succès.</div>
+{% endif %}
+
+<div class="grid grid-3">
+  <div class="card status-card {% if sonarr_ok %}ok{% else %}error{% endif %}">
+    <div class="card-label">Sonarr</div>
+    <div class="card-value">{% if sonarr_ok %}Connecté{% else %}Hors ligne{% endif %}</div>
+  </div>
+  <div class="card status-card {% if radarr_ok %}ok{% else %}error{% endif %}">
+    <div class="card-label">Radarr</div>
+    <div class="card-value">{% if radarr_ok %}Connecté{% else %}Hors ligne{% endif %}</div>
+  </div>
+  <div class="card status-card {% if pushover_ok %}ok{% else %}warn{% endif %}">
+    <div class="card-label">Pushover</div>
+    <div class="card-value">{% if pushover_ok %}Configuré{% else %}Non configuré{% endif %}</div>
+  </div>
+</div>
+
+<div class="grid grid-2 section">
+  <div class="card">
+    <h2>Tâches</h2>
+    <div class="task-list">
+      {% for task in tasks %}
+      <div class="task-row">
+        <div>
+          <strong>{{ task.label }}</strong>
+          <span class="task-status {% if settings.get(task.enabled_key) == 'true' %}enabled{% else %}disabled{% endif %}">
+            {{ 'Activée' if settings.get(task.enabled_key) == 'true' else 'Désactivée' }}
+          </span>
+        </div>
+        <form method="post" action="/tasks/{{ task.name }}/run">
+          <button type="submit" class="btn btn-sm">Lancer</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Statistiques</h2>
+    <ul class="stat-list">
+      <li><span>Anime en attente</span><strong>{{ anime_pending }}</strong></li>
+      {% for name, count in task_stats.items() %}
+      <li><span>{{ name }}</span><strong>{{ count }} exécutions</strong></li>
+      {% else %}
+      <li class="muted">Aucune exécution enregistrée</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+
+<div class="card section">
+  <h2>Journal récent</h2>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Tâche</th>
+        <th>Statut</th>
+        <th>Message</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td class="nowrap">{{ log.created_at.strftime('%d/%m %H:%M') if log.created_at else '-' }}</td>
+        <td>{{ log.task_name }}</td>
+        <td><span class="badge badge-{{ log.status }}">{{ log.status }}</span></td>
+        <td class="truncate">{{ log.message or '' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">Aucun log</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

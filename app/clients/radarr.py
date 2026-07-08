@@ -8,10 +8,10 @@ from app.config import get_settings
 
 
 class RadarrClient:
-    def __init__(self) -> None:
+    def __init__(self, base_url: str | None = None, api_key: str | None = None) -> None:
         settings = get_settings()
-        self.base_url = settings.radarr_url.rstrip("/")
-        self.api_key = settings.radarr_api_key
+        self.base_url = (base_url or settings.radarr_url).rstrip("/")
+        self.api_key = api_key if api_key is not None else settings.radarr_api_key
         self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -65,6 +65,9 @@ class RadarrClient:
 
     async def search_releases(self, movie_id: int) -> list[dict]:
         return await self.post("/release", params={"movieId": movie_id})
+
+    async def trigger_movie_search(self, movie_ids: list[int]) -> dict:
+        return await self.post("/command", {"name": "MoviesSearch", "movieIds": movie_ids})
 
     async def get_tags(self) -> list[dict]:
         return await self.get("/tag")

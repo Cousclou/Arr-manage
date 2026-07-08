@@ -4,47 +4,51 @@ Application de gestion d'état pour **Sonarr** et **Radarr** visant à réduire 
 
 ## Fonctionnalités
 
-- **Sonarr** : désactive le suivi des épisodes déjà téléchargés et passe les séries en mode « nouveaux épisodes uniquement »
-- **Radarr** : désactive le suivi des films téléchargés, avec exclusion par tags et règles de format
-- **Upgrades** : détecte les versions plus légères (priorité AV1 puis H.265) au-delà d'un seuil de taille
-- **Anime** : bascule automatique en « standard » pour les animes d'années précédentes, retour en « anime » si fichier trouvé après 1 h
-- **Notifications Pushover** : alertes sur les imports échoués, avec liste d'ignorés pour le cross-seed
+- **Interface web** sur `http://localhost:8000` pour configurer toute l'application
+- **Sonarr** : désactive le suivi des épisodes/saisons téléchargés, mode nouveaux épisodes uniquement
+- **Radarr** : désactive le suivi des films téléchargés, exclusion par tags et règles de format
+- **Upgrades** : détecte les versions plus légères (AV1 / H.265), recherche auto optionnelle
+- **Anime** : bascule standard/anime avec délai configurable
+- **Pushover** : alertes imports échoués, liste d'ignorés pour cross-seed
 
 ## Stack
 
-- FastAPI + PostgreSQL + Redis (ARQ)
+- FastAPI + interface web Jinja2
+- PostgreSQL + Redis (ARQ)
 - Docker Compose
 
 ## Démarrage rapide
 
 ```bash
 cp .env.example .env
-# Éditer .env avec vos clés API Sonarr, Radarr et Pushover
-
 docker compose up -d --build
 ```
 
-L'API est disponible sur `http://localhost:8000` — documentation Swagger sur `/docs`.
+- **Interface web** : http://localhost:8000
+- **API Swagger** : http://localhost:8000/docs
 
-## Configuration
+La configuration peut être modifiée entièrement depuis l'interface web (connexions, intervalles, options Sonarr/Radarr, etc.) sans redémarrage.
 
-| Variable | Description |
-|----------|-------------|
-| `SONARR_URL` / `SONARR_API_KEY` | Connexion Sonarr |
-| `RADARR_URL` / `RADARR_API_KEY` | Connexion Radarr |
-| `PUSHOVER_USER_KEY` / `PUSHOVER_API_TOKEN` | Notifications |
-| `UPGRADE_SIZE_THRESHOLD_GB` | Seuil (Go) pour chercher des versions plus légères |
-| `RADARR_EXCLUDE_TAG_IDS` | IDs de tags Radarr à exclure (séparés par virgules) |
-| `*_INTERVAL` | Intervalles des tâches en secondes |
+## Pages web
 
-## API
+| Page | Description |
+|------|-------------|
+| `/` | Tableau de bord, statut, lancement manuel des tâches |
+| `/settings` | Configuration complète par onglets |
+| `/ignored` | Imports ignorés (cross-seed) |
+| `/excluded` | Médias exclus du traitement auto |
+| `/rules` | Règles de format par média |
+| `/anime` | Suivi des bascules anime |
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/v1/health` | État des connexions |
-| `POST /api/v1/tasks/{name}/trigger` | Déclencher une tâche manuellement |
-| `GET/POST/DELETE /api/v1/ignored-imports` | Gérer les imports ignorés |
-| `GET/POST/DELETE /api/v1/upgrade-rules` | Règles de format par média |
-| `GET /api/v1/logs` | Historique des tâches |
+## Options utiles ajoutées
 
-Tâches disponibles : `sonarr_monitor`, `radarr_monitor`, `upgrade_check`, `import_monitor`, `anime_handler`.
+- Activation/désactivation de chaque tâche
+- Mode simulation (dry-run)
+- Exclusion Sonarr/Radarr par tags ou ID média
+- Désactivation par saison complète (Sonarr)
+- Ignorer séries en cours de diffusion
+- Garder suivi Radarr si upgrade disponible
+- Seuil d'économie minimale pour upgrades (%)
+- Recherche automatique si upgrade trouvé
+- Notifications Pushover pour upgrades
+- Délai anime configurable

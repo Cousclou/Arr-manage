@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Médias exclus — MediaGuard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Médias exclus</h1>
+  <p class="subtitle">Séries ou films exclus du traitement automatique (monitoring, upgrades).</p>
+</div>
+
+{% if request.query_params.get('added') %}
+<div class="alert alert-success">Média exclu.</div>
+{% endif %}
+
+<div class="grid grid-2 section">
+  <div class="card">
+    <h2>Exclure un média</h2>
+    <form method="post" action="/excluded" class="stack-form">
+      <div class="field-group">
+        <label>Service</label>
+        <select name="service" class="input" required>
+          <option value="sonarr">Sonarr (ID série)</option>
+          <option value="radarr">Radarr (ID film)</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>ID Sonarr/Radarr</label>
+        <input type="number" name="external_id" class="input" required>
+      </div>
+      <div class="field-group">
+        <label>Titre</label>
+        <input type="text" name="title" class="input" required>
+      </div>
+      <div class="field-group">
+        <label>Raison</label>
+        <input type="text" name="reason" class="input">
+      </div>
+      <button type="submit" class="btn btn-primary">Exclure</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Liste ({{ items | length }})</h2>
+    <table class="data-table">
+      <thead><tr><th>Service</th><th>ID</th><th>Titre</th><th></th></tr></thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td><span class="badge">{{ item.service }}</span></td>
+          <td>{{ item.external_id }}</td>
+          <td>{{ item.title }}</td>
+          <td>
+            <form method="post" action="/excluded/{{ item.id }}/delete">
+              <button type="submit" class="btn btn-sm btn-danger">✕</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="muted">Aucun média exclu</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

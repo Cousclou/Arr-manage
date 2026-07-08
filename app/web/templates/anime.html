@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Suivi anime — MediaGuard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Suivi anime</h1>
+  <p class="subtitle">Séries basculées en standard en attente de fichier.</p>
+</div>
+
+<div class="card section">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Série</th>
+        <th>Bascule</th>
+        <th>Statut</th>
+        <th>Résolu le</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for w in watches %}
+      <tr>
+        <td>{{ w.title }} <small class="muted">#{{ w.sonarr_series_id }}</small></td>
+        <td class="nowrap">{{ w.switched_at.strftime('%d/%m/%Y %H:%M') if w.switched_at else '-' }}</td>
+        <td>
+          {% if not w.resolved %}
+          <span class="badge badge-warn">En attente</span>
+          {% elif w.resolved_at %}
+          <span class="badge badge-success">Résolu</span>
+          {% else %}
+          <span class="badge">Standard</span>
+          {% endif %}
+        </td>
+        <td class="nowrap">{{ w.resolved_at.strftime('%d/%m/%Y %H:%M') if w.resolved_at else '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">Aucun suivi anime</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

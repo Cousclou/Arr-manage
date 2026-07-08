@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Configuration — MediaGuard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Configuration</h1>
+  <p class="subtitle">Modifiez les paramètres sans redémarrer l'application.</p>
+</div>
+
+{% if request.query_params.get('saved') %}
+<div class="alert alert-success">Configuration enregistrée.</div>
+{% endif %}
+
+<form method="post" action="/settings" class="settings-form">
+  <div class="tabs">
+    {% for group in groups %}
+    <button type="button" class="tab-btn {% if loop.first %}active{% endif %}" data-tab="{{ group.id }}">
+      {{ group.icon }} {{ group.title }}
+    </button>
+    {% endfor %}
+  </div>
+
+  {% for group in groups %}
+  <div class="tab-panel {% if loop.first %}active{% endif %}" id="tab-{{ group.id }}">
+    <h2>{{ group.title }}</h2>
+    <div class="fields-grid">
+      {% for field in group.fields %}
+      <div class="field-group">
+        <label for="{{ field.key }}">{{ field.label }}</label>
+
+        {% if field.type == 'toggle' %}
+        <label class="toggle">
+          <input type="checkbox" name="{{ field.key }}" id="{{ field.key }}"
+                 {% if settings.get(field.key) == 'true' %}checked{% endif %}>
+          <span class="toggle-slider"></span>
+        </label>
+
+        {% elif field.type == 'select' %}
+        <select name="{{ field.key }}" id="{{ field.key }}" class="input">
+          {% for opt in field.options %}
+          <option value="{{ opt }}" {% if settings.get(field.key) == opt %}selected{% endif %}>{{ opt | upper }}</option>
+          {% endfor %}
+        </select>
+
+        {% elif field.type == 'password' %}
+        <input type="password" name="{{ field.key }}" id="{{ field.key }}" class="input"
+               value="{{ settings.get(field.key, '') }}" autocomplete="off"
+               placeholder="{% if settings.get(field.key) %}••••••••{% endif %}">
+
+        {% elif field.type == 'number' %}
+        <input type="number" name="{{ field.key }}" id="{{ field.key }}" class="input"
+               value="{{ settings.get(field.key, '') }}"
+               {% if field.step %}step="{{ field.step }}"{% endif %}>
+
+        {% else %}
+        <input type="text" name="{{ field.key }}" id="{{ field.key }}" class="input"
+               value="{{ settings.get(field.key, '') }}"
+               {% if field.placeholder %}placeholder="{{ field.placeholder }}"{% endif %}>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Enregistrer</button>
+  </div>
+</form>
+{% endblock %}

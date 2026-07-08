@@ -10,6 +10,8 @@ from app.api.schemas import (
     HealthResponse,
     IgnoredImportCreate,
     IgnoredImportResponse,
+    SettingsResponse,
+    SettingsUpdate,
     TaskLogResponse,
     TriggerResponse,
     UpgradeRuleCreate,
@@ -21,19 +23,24 @@ from app.clients.sonarr import SonarrClient
 from app.config import get_settings
 from app.db.models import IgnoredImport, MediaUpgradeRule, TaskLog
 from app.db.session import get_db
+from app.services.runtime_config import SETTING_DEFAULTS, RuntimeConfig
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health() -> HealthResponse:
-    sonarr_ok = False
-    radarr_ok = False
+async def health(db: AsyncSession = Depends(get_db)) -> HealthResponse:
+    cfg = RuntimeConfig(db)
+    settings = await cfg.all_settings()
+    sonarr_ok = radarr_ok = False
 
-    sonarr = SonarrClient()
-    radarr = RadarrClient()
-    pushover = PushoverClient()
+    sonarr = SonarrClient(base_url=settings.get("sonarr_url"), api_key=settings.get("sonarr_api_key"))
+    radarr = RadarrClient(base_url=settings.get("radarr_url"), api_key=settings.get("radarr_api_key"))
+    pushover = PushoverClient(
+        user_key=settings.get("pushover_user_key"),
+        api_token=settings.get("pushover_api_token"),
+    )
 
     try:
         await sonarr.get_system_status()
@@ -149,3 +156,17 @@ async def add_upgrade_rule(
 async def remove_upgrade_rule(rule_id: int, db: AsyncSession = Depends(get_db)) -> None:
     await db.execute(delete(MediaUpgradeRule).where(MediaUpgradeRule.id == rule_id))
     await db.commit()
+
+
+@router.get("/settings", response_model=SettingsResponse)
+async def get_settings_api(db: AsyncSession = Depends(get_db)) -> SettingsResponse:
+    cfg = RuntimeConfig(db)
+    return SettingsResponse(settings=await cfg.all_settings())
+
+
+@router.put("/settings", response_model=SettingsResponse)
+async def update_settings_api(body: SettingsUpdate, db: AsyncSession = Depends(get_db)) -> SettingsResponse:
+    valid = {k: v for k, v in body.settings.items() if k in SETTING_DEFAULTS}
+    cfg = RuntimeConfig(db)
+    await cfg.set_many(valid)
+    return SettingsResponse(settings=await cfg.all_settings())

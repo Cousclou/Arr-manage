@@ -65,6 +65,19 @@ class MediaUpgradeRule(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class ExcludedMedia(Base):
+    """Médias exclus manuellement du traitement automatique."""
+
+    __tablename__ = "excluded_media"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    service: Mapped[str] = mapped_column(String(16), nullable=False)
+    external_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class ImportAlert(Base):
     """Alertes déjà envoyées pour éviter les doublons Pushover."""
 

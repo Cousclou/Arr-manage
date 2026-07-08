@@ -65,3 +65,11 @@ class TriggerResponse(BaseModel):
     task: str
     job_id: str | None
     message: str
+
+
+class SettingsResponse(BaseModel):
+    settings: dict[str, str]
+
+
+class SettingsUpdate(BaseModel):
+    settings: dict[str, str]
