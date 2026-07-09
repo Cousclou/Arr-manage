@@ -76,7 +76,7 @@ class WantedSearchService:
         manual = series_id is not None or movie_id is not None or only_service is not None
         if not await cfg.get_bool("task_wanted_search_enabled") and not manual:
             await tlog.finish("skipped", "Tâche désactivée")
-            return {"skipped": True}
+            return {"skipped": True, "log_id": None}
 
         stats = {
             "sonarr_series": 0,
@@ -129,7 +129,7 @@ class WantedSearchService:
             await tlog.finish("skipped", "Aucun service activé ou configuré")
             await sonarr.close()
             await radarr.close()
-            return {"skipped": True}
+            return {"skipped": True, "log_id": None}
 
         if series_id and not sonarr.configured:
             tlog.detail("error", "Sonarr search", info="Sonarr non configuré")
@@ -162,10 +162,10 @@ class WantedSearchService:
                 stats["errors"] += 1
 
         tlog.set_stats(stats)
-        await tlog.finish("success")
+        log_id = await tlog.finish("success")
         await sonarr.close()
         await radarr.close()
-        return stats
+        return {**stats, "log_id": log_id}
 
     async def _search_sonarr(
         self,
@@ -207,8 +207,9 @@ class WantedSearchService:
 
             stats["sonarr_series"] += 1
             is_old = year < current_year
+            use_season_first = is_old and season_first
 
-            if is_old and season_first:
+            if use_season_first:
                 by_season: dict[int, list[WantedEpisode]] = defaultdict(list)
                 for ep in missing:
                     by_season[ep.season].append(ep)

@@ -348,9 +348,9 @@ SETTING_GROUPS: list[dict] = [
             },
             {
                 "title": "Stratégie Sonarr",
-                "description": "Séries antérieures à l'année en cours : saison complète puis épisode par épisode. Séries récentes : épisode par épisode, season pack si disponible.",
+                "description": "Par défaut, les séries dont l'année est antérieure à l'année en cours : season pack d'abord, puis épisode par épisode si besoin.",
                 "fields": [
-                    {"key": "search_old_series_season_first", "label": "Séries anciennes : recherche saison d'abord", "type": "toggle"},
+                    {"key": "search_old_series_season_first", "label": "Séries anciennes : season pack puis épisodes", "type": "toggle"},
                     {"key": "search_prefer_season_pack", "label": "Préférer les season packs (séries récentes)", "type": "toggle"},
                 ],
             },

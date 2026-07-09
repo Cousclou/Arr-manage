@@ -515,6 +515,56 @@ body {
   padding-bottom: 0;
 }
 
+.search-result-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.875rem;
+}
+
+.search-result-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.search-result-group-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.wanted-search-form .htmx-indicator.search-spinner {
+  display: none;
+}
+
+#wanted-search-loading {
+  display: none;
+}
+
+#wanted-search-loading.htmx-request {
+  display: block;
+}
+
+.wanted-search-form.htmx-request .search-label {
+  display: none;
+}
+
+.wanted-search-form.htmx-request .htmx-indicator.search-spinner {
+  display: inline-flex;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.wanted-search-result {
+  border-color: hsl(var(--primary) / 0.35);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
 .field-hint {
   margin-top: 0.375rem;
 }

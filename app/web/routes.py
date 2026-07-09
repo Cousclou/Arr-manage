@@ -19,7 +19,7 @@ from app.db.session import get_db
 from app.services.runtime_config import SETTING_GROUPS, TASK_META, RuntimeConfig, iter_setting_fields
 from app.services.pending_imports import fetch_pending_imports
 from app.services.task_logger import get_log_details
-from app.services.wanted_search import list_wanted_preview
+from app.services.wanted_search import WantedSearchService, list_wanted_preview
 from app.utils.timezone import format_local
 
 logger = logging.getLogger(__name__)
@@ -178,7 +178,7 @@ async def save_settings(request: Request, db: AsyncSession = Depends(get_db)):
     for field in iter_setting_fields():
         key = field["key"]
         if field["type"] == "toggle":
-            updates[key] = "true" if key in form else "false"
+            updates[key] = "true" if form.get(key) == "true" else "false"
         elif key in form:
             updates[key] = str(form[key])
 
@@ -423,8 +423,9 @@ async def wanted_preview_partial(request: Request, db: AsyncSession = Depends(ge
     )
 
 
-@router.post("/wanted/search")
+@router.post("/wanted/search", response_class=HTMLResponse)
 async def wanted_search_manual(
+    request: Request,
     service: str = Form(...),
     series_id: int | None = Form(None),
     movie_id: int | None = Form(None),
@@ -435,27 +436,98 @@ async def wanted_search_manual(
 
     if service == "sonarr":
         if not series_id:
-            return RedirectResponse("/wanted?error=empty", status_code=303)
+            return _wanted_search_error(request, "empty", service)
         client = SonarrClient(base_url=settings.get("sonarr_url"), api_key=settings.get("sonarr_api_key"))
         if not client.configured:
-            return RedirectResponse("/wanted?error=sonarr", status_code=303)
+            await client.close()
+            return _wanted_search_error(request, "sonarr", service)
         await client.close()
-        job_kwargs: dict = {"series_id": series_id}
     elif service == "radarr":
         if not movie_id:
-            return RedirectResponse("/wanted?error=empty", status_code=303)
+            return _wanted_search_error(request, "empty", service)
         client = RadarrClient(base_url=settings.get("radarr_url"), api_key=settings.get("radarr_api_key"))
         if not client.configured:
-            return RedirectResponse("/wanted?error=radarr", status_code=303)
+            await client.close()
+            return _wanted_search_error(request, "radarr", service)
         await client.close()
-        job_kwargs = {"movie_id": movie_id}
     else:
-        return RedirectResponse("/wanted?error=service", status_code=303)
+        return _wanted_search_error(request, "service", service)
 
-    redis = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
-    await redis.enqueue_job("wanted_search", **job_kwargs)
-    await redis.aclose()
-    return RedirectResponse("/wanted?started=1&tab=" + service, status_code=303)
+    service_obj = WantedSearchService(db)
+    if service == "sonarr":
+        result = await service_obj.run(series_id=series_id)
+        media_title = await _sonarr_series_title(settings, series_id)
+    else:
+        result = await service_obj.run(movie_id=movie_id)
+        media_title = await _radarr_movie_title(settings, movie_id)
+
+    log = None
+    details: list = []
+    if result.get("log_id"):
+        log, details = await get_log_details(db, result["log_id"])
+
+    grouped = _group_search_details(details)
+    ctx = {
+        "request": request,
+        "service": service,
+        "media_title": media_title,
+        "result": result,
+        "log": log,
+        "details": details,
+        "grouped_details": grouped,
+        "settings": settings,
+    }
+
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse("partials/wanted_search_result.html", ctx)
+
+    return templates.TemplateResponse("wanted_search_result.html", ctx)
+
+
+def _wanted_search_error(request: Request, code: str, tab: str) -> RedirectResponse:
+    return RedirectResponse(f"/wanted?error={code}&tab={tab}", status_code=303)
+
+
+async def _sonarr_series_title(settings: dict, series_id: int) -> str:
+    client = SonarrClient(base_url=settings.get("sonarr_url"), api_key=settings.get("sonarr_api_key"))
+    try:
+        series = await client.get_series_by_id(series_id)
+        return series.get("title", f"Série #{series_id}")
+    except Exception:
+        return f"Série #{series_id}"
+    finally:
+        await client.close()
+
+
+async def _radarr_movie_title(settings: dict, movie_id: int) -> str:
+    client = RadarrClient(base_url=settings.get("radarr_url"), api_key=settings.get("radarr_api_key"))
+    try:
+        movie = await client.get_movie(movie_id)
+        return movie.get("title", f"Film #{movie_id}")
+    except Exception:
+        return f"Film #{movie_id}"
+    finally:
+        await client.close()
+
+
+def _group_search_details(details: list) -> list[dict]:
+    """Regroupe les détails de recherche par saison (Sonarr)."""
+    groups: dict[str, list] = {}
+    order: list[str] = []
+
+    for item in details:
+        label = "Résultats"
+        detail = item.detail or ""
+        if detail.startswith("S") and "E" in detail[:6]:
+            label = detail.split("E")[0].split("·")[0].strip()
+        elif "season pack" in detail.lower():
+            label = detail.split("season pack")[0].strip() or "Season pack"
+        if label not in groups:
+            groups[label] = []
+            order.append(label)
+        groups[label].append(item)
+
+    return [{"label": label, "items": groups[label]} for label in order]
 
 
 @router.post("/wanted/run-sonarr")

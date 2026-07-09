@@ -1,0 +1,70 @@
+{% from "macros.html" import badge, action_badge %}
+{% from "macros/icons.html" import icon %}
+
+<div class="card wanted-search-result">
+  <div class="card-header flex-between">
+    <div>
+      <h2 class="card-title">{{ icon('zap', 18) }} Recherche terminée</h2>
+      <p class="card-description">{{ media_title }} · {{ 'Sonarr' if service == 'sonarr' else 'Radarr' }}</p>
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('wanted-search-result').innerHTML=''">Fermer</button>
+  </div>
+  <div class="card-content">
+    {% if result.get('skipped') %}
+    <div class="alert alert-warning">Recherche ignorée — vérifiez la configuration.</div>
+    {% else %}
+    <div class="search-result-stats">
+      {% if service == 'sonarr' %}
+      <span>{{ result.get('sonarr_found', 0) }} release(s) trouvée(s)</span>
+      <span>{{ result.get('sonarr_grabbed', 0) }} téléchargement(s)</span>
+      <span>{{ result.get('sonarr_notified', 0) }} alerte(s)</span>
+      {% else %}
+      <span>{{ result.get('radarr_found', 0) }} release(s) trouvée(s)</span>
+      <span>{{ result.get('radarr_grabbed', 0) }} téléchargement(s)</span>
+      <span>{{ result.get('radarr_notified', 0) }} alerte(s)</span>
+      {% endif %}
+      {% if result.get('errors') %}<span class="text-warning">{{ result.errors }} erreur(s)</span>{% endif %}
+      {% if result.get('dry_run') %}<span class="text-muted">Mode simulation</span>{% endif %}
+    </div>
+
+    {% if log %}
+    <p class="text-sm text-muted mt-2">{{ log.message }}</p>
+    {% endif %}
+
+    {% if grouped_details %}
+    <div class="search-result-groups mt-4">
+      {% for group in grouped_details %}
+      <div class="search-result-group">
+        <h3 class="search-result-group-title">{{ group.label }}</h3>
+        <table class="table table-compact">
+          <thead><tr><th>Action</th><th>Info</th></tr></thead>
+          <tbody>
+            {% for d in group.items %}
+            <tr>
+              <td>{{ action_badge(d.action) }}</td>
+              <td class="text-sm text-muted">{{ d.detail or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endfor %}
+    </div>
+    {% elif details %}
+    <table class="table table-compact mt-4">
+      <thead><tr><th>Action</th><th>Info</th></tr></thead>
+      <tbody>
+        {% for d in details %}
+        <tr>
+          <td>{{ action_badge(d.action) }}</td>
+          <td class="text-sm text-muted">{{ d.detail or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state mt-4">Aucun résultat détaillé pour cette recherche.</p>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>

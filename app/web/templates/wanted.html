@@ -25,7 +25,7 @@
   {% if settings.get('search_auto_grab') != 'true' %}
   <div class="alert alert-warning">
     <strong>Auto-grab désactivé</strong> — les releases trouvées seront listées dans le journal mais pas téléchargées automatiquement.
-    <a href="/settings?tab=search" class="btn btn-ghost btn-sm">Activer</a>
+    <a href="/settings?tab=search" class="btn btn-ghost btn-sm">Configurer l'auto-grab</a>
   </div>
   {% endif %}
 
@@ -51,6 +51,11 @@
   {% elif request.query_params.get('error') == 'empty' %}
   <div class="alert alert-warning">Indiquez un identifiant ou un titre.</div>
   {% endif %}
+
+  <div id="wanted-search-loading" class="card p-6 text-center text-muted htmx-indicator mt-4">
+    <p>Recherche en cours sur les indexeurs… Cela peut prendre plusieurs minutes.</p>
+  </div>
+  <div id="wanted-search-result" class="mt-4"></div>
 
   <div
     id="wanted-preview"

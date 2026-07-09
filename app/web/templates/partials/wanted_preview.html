@@ -122,10 +122,17 @@
               <td class="text-muted text-sm">{{ s.tmdb or '—' }}</td>
               <td><span class="badge badge-warning">{{ s.missing }}</span></td>
               <td class="text-right">
-                <form method="post" action="/wanted/search" class="inline-form">
+                <form hx-post="/wanted/search"
+                      hx-target="#wanted-search-result"
+                      hx-swap="innerHTML"
+                      hx-indicator="#wanted-search-loading"
+                      class="inline-form wanted-search-form">
                   <input type="hidden" name="service" value="sonarr">
                   <input type="hidden" name="series_id" value="{{ s.id }}">
-                  <button type="submit" class="btn btn-outline btn-sm">{{ icon('zap', 14) }} Rechercher</button>
+                  <button type="submit" class="btn btn-outline btn-sm">
+                    <span class="htmx-indicator search-spinner">{{ icon('zap', 14) }}</span>
+                    <span class="search-label">Rechercher</span>
+                  </button>
                 </form>
               </td>
             </tr>
@@ -239,10 +246,17 @@
               <td class="text-muted text-sm">{{ m.tmdb or '—' }}</td>
               <td class="text-muted text-sm">{{ m.tvdb or '—' }}</td>
               <td class="text-right">
-                <form method="post" action="/wanted/search" class="inline-form">
+                <form hx-post="/wanted/search"
+                      hx-target="#wanted-search-result"
+                      hx-swap="innerHTML"
+                      hx-indicator="#wanted-search-loading"
+                      class="inline-form wanted-search-form">
                   <input type="hidden" name="service" value="radarr">
                   <input type="hidden" name="movie_id" value="{{ m.id }}">
-                  <button type="submit" class="btn btn-outline btn-sm">{{ icon('zap', 14) }} Rechercher</button>
+                  <button type="submit" class="btn btn-outline btn-sm">
+                    <span class="htmx-indicator search-spinner">{{ icon('zap', 14) }}</span>
+                    <span class="search-label">Rechercher</span>
+                  </button>
                 </form>
               </td>
             </tr>
