@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "macros.html" import badge, status_dot %}
+{% from "macros/icons.html" import icon %}
 {% block title %}Configuration — MediaGuard{% endblock %}
 
 {% block content %}
@@ -19,7 +20,7 @@
     <nav class="settings-nav">
       {% for group in groups %}
       <button type="button" class="settings-nav-item {% if loop.first %}active{% endif %}" data-tab="{{ group.id }}">
-        <span class="settings-nav-icon">{{ group.icon }}</span>
+        <span class="settings-nav-icon">{{ icon(group.icon, 18) }}</span>
         {{ group.title }}
       </button>
       {% endfor %}
@@ -30,7 +31,7 @@
       <div class="settings-panel {% if loop.first %}active{% endif %}" id="tab-{{ group.id }}">
         <div class="card">
           <div class="card-header">
-            <h2 class="card-title">{{ group.icon }} {{ group.title }}</h2>
+            <h2 class="card-title settings-card-title">{{ icon(group.icon, 20) }} {{ group.title }}</h2>
           </div>
           <div class="card-content">
             {% for section in group.sections %}

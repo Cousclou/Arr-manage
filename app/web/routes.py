@@ -19,12 +19,13 @@ from app.db.session import get_db
 from app.services.runtime_config import SETTING_GROUPS, TASK_META, RuntimeConfig, iter_setting_fields
 from app.services.pending_imports import fetch_pending_imports
 from app.services.task_logger import get_log_details
+from app.services.wanted_search import WantedSearchService, list_wanted_preview
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 templates = Jinja2Templates(directory="app/web/templates")
 
-LOG_SERVICES = ["sonarr", "radarr", "upgrade", "import", "anime"]
+LOG_SERVICES = ["sonarr", "radarr", "upgrade", "import", "anime", "search"]
 LOG_PAGE_SIZE = 25
 
 
@@ -368,3 +369,51 @@ async def ignore_pending_import(
     )
     await db.commit()
     return RedirectResponse("/pending-imports?ignored=1", status_code=303)
+
+
+@router.get("/wanted", response_class=HTMLResponse)
+async def wanted_page(request: Request, db: AsyncSession = Depends(get_db)):
+    cfg = RuntimeConfig(db)
+    settings = await cfg.all_settings()
+
+    sonarr = SonarrClient(base_url=settings.get("sonarr_url"), api_key=settings.get("sonarr_api_key"))
+    radarr = RadarrClient(base_url=settings.get("radarr_url"), api_key=settings.get("radarr_api_key"))
+
+    preview = await list_wanted_preview(sonarr, radarr)
+    await sonarr.close()
+    await radarr.close()
+
+    logs, _ = await _fetch_logs(db, service="search", limit=8)
+
+    return templates.TemplateResponse(
+        "wanted.html",
+        {
+            "request": request,
+            "page": "wanted",
+            "preview": preview,
+            "settings": settings,
+            "search_logs": logs,
+        },
+    )
+
+
+@router.post("/wanted/search")
+async def wanted_search_manual(
+    service: str = Form(...),
+    media_id: int = Form(...),
+):
+    redis = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
+    if service == "sonarr":
+        await redis.enqueue_job("wanted_search", series_id=media_id)
+    elif service == "radarr":
+        await redis.enqueue_job("wanted_search", movie_id=media_id)
+    await redis.aclose()
+    return RedirectResponse("/wanted?started=1", status_code=303)
+
+
+@router.post("/wanted/run-all")
+async def wanted_search_all():
+    redis = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
+    await redis.enqueue_job("wanted_search")
+    await redis.aclose()
+    return RedirectResponse("/wanted?started=1", status_code=303)

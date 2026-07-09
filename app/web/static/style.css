@@ -211,6 +211,7 @@ body {
 .service-upgrade { background: hsl(var(--upgrade) / 0.15); color: hsl(var(--upgrade)); }
 .service-import { background: hsl(var(--import) / 0.15); color: hsl(var(--import)); }
 .service-anime { background: hsl(var(--anime) / 0.15); color: hsl(var(--anime)); }
+.service-search { background: hsl(45 93% 47% / 0.15); color: hsl(45 93% 55%); }
 .service-system { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
 .service-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
 .service-dot.service-sonarr { background: hsl(var(--sonarr)); }
@@ -392,7 +393,64 @@ body {
 
 .inline-form { display: inline; }
 
+/* Wanted search layout */
+.wanted-layout {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.wanted-sidebar {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.strategy-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.strategy-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.strategy-list li:last-child { border-bottom: none; padding-bottom: 0; }
+.strategy-label { font-weight: 500; font-size: 0.8125rem; }
+
+.w-full { width: 100%; }
+
+.settings-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.settings-nav-item.active .settings-nav-icon { color: hsl(var(--foreground)); }
+
+.settings-card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.settings-card-title svg { color: hsl(var(--muted-foreground)); }
+
+.card-title svg { vertical-align: middle; margin-right: 0.35rem; }
+
 @media (max-width: 768px) {
   .settings-layout { grid-template-columns: 1fr; }
   .settings-nav { flex-direction: row; flex-wrap: wrap; position: static; }
+  .wanted-layout { grid-template-columns: 1fr; }
+  .wanted-sidebar { position: static; }
 }

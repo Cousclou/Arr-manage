@@ -22,6 +22,7 @@ SERVICE_MAP = {
     "upgrade_check": "upgrade",
     "import_monitor": "import",
     "anime_handler": "anime",
+    "wanted_search": "search",
 }
 
 ACTION_LABELS = {
@@ -130,6 +131,13 @@ def _build_summary(task_name: str, stats: dict, truncated: bool) -> str:
     elif task_name == "anime_handler":
         parts.append(f"{stats.get('new_watches', 0)} bascules")
         parts.append(f"{stats.get('reverted_to_anime', 0)} retours anime")
+    elif task_name == "wanted_search":
+        parts.append(f"{stats.get('sonarr_series', 0)} séries Sonarr")
+        parts.append(f"{stats.get('radarr_movies', 0)} films Radarr")
+        if stats.get("sonarr_grabbed") or stats.get("radarr_grabbed"):
+            parts.append(f"{stats.get('sonarr_grabbed', 0) + stats.get('radarr_grabbed', 0)} grabs")
+        if stats.get("sonarr_notified") or stats.get("radarr_notified"):
+            parts.append(f"{stats.get('sonarr_notified', 0) + stats.get('radarr_notified', 0)} alertes seeders")
     else:
         parts.append(str(stats))
 

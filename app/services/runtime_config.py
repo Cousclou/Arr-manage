@@ -57,6 +57,16 @@ SETTING_DEFAULTS: dict[str, str] = {
     "import_check_history": "true",
     # Général
     "dry_run": "false",
+    # Recherche wanted
+    "task_wanted_search_enabled": "false",
+    "wanted_search_interval": "1800",
+    "search_sonarr_enabled": "true",
+    "search_radarr_enabled": "true",
+    "search_min_seeders": "2",
+    "search_notify_low_seeders": "true",
+    "search_prefer_season_pack": "true",
+    "search_auto_grab": "false",
+    "search_old_series_season_first": "true",
 }
 
 ENV_OVERRIDES: dict[str, str] = {
@@ -164,7 +174,7 @@ SETTING_GROUPS: list[dict] = [
     {
         "id": "sonarr",
         "title": "Sonarr",
-        "icon": "📺",
+        "icon": "tv",
         "sections": [
             {
                 "title": "Connexion",
@@ -197,7 +207,7 @@ SETTING_GROUPS: list[dict] = [
     {
         "id": "radarr",
         "title": "Radarr",
-        "icon": "🎬",
+        "icon": "film",
         "sections": [
             {
                 "title": "Connexion",
@@ -227,7 +237,7 @@ SETTING_GROUPS: list[dict] = [
     {
         "id": "notifications",
         "title": "Notifications",
-        "icon": "🔔",
+        "icon": "bell",
         "sections": [
             {
                 "title": "Pushover",
@@ -249,12 +259,18 @@ SETTING_GROUPS: list[dict] = [
                     {"key": "upgrade_notify_pushover", "label": "Notifier si upgrade disponible", "type": "toggle"},
                 ],
             },
+            {
+                "title": "Alertes recherche",
+                "fields": [
+                    {"key": "search_notify_low_seeders", "label": "Notifier si seeders insuffisants (recherche)", "type": "toggle"},
+                ],
+            },
         ],
     },
     {
         "id": "upgrades",
         "title": "Upgrades",
-        "icon": "📦",
+        "icon": "package",
         "sections": [
             {
                 "title": "Planification",
@@ -279,7 +295,7 @@ SETTING_GROUPS: list[dict] = [
     {
         "id": "imports",
         "title": "Imports",
-        "icon": "📥",
+        "icon": "download",
         "sections": [
             {
                 "title": "Surveillance",
@@ -296,7 +312,7 @@ SETTING_GROUPS: list[dict] = [
     {
         "id": "anime",
         "title": "Anime",
-        "icon": "🎌",
+        "icon": "star",
         "sections": [
             {
                 "title": "Planification",
@@ -315,9 +331,41 @@ SETTING_GROUPS: list[dict] = [
         ],
     },
     {
+        "id": "search",
+        "title": "Recherche",
+        "icon": "search",
+        "sections": [
+            {
+                "title": "Planification",
+                "description": "Recherche automatique des épisodes et films wanted.",
+                "fields": [
+                    {"key": "task_wanted_search_enabled", "label": "Activer la recherche wanted", "type": "toggle"},
+                    {"key": "wanted_search_interval", "label": "Intervalle (secondes)", "type": "number"},
+                    {"key": "search_sonarr_enabled", "label": "Rechercher sur Sonarr", "type": "toggle"},
+                    {"key": "search_radarr_enabled", "label": "Rechercher sur Radarr", "type": "toggle"},
+                ],
+            },
+            {
+                "title": "Stratégie Sonarr",
+                "description": "Séries antérieures à l'année en cours : saison complète puis épisode par épisode.",
+                "fields": [
+                    {"key": "search_old_series_season_first", "label": "Séries anciennes : recherche saison d'abord", "type": "toggle"},
+                    {"key": "search_prefer_season_pack", "label": "Préférer les season packs", "type": "toggle"},
+                ],
+            },
+            {
+                "title": "Critères & actions",
+                "fields": [
+                    {"key": "search_min_seeders", "label": "Seeders minimum", "type": "number"},
+                    {"key": "search_auto_grab", "label": "Télécharger automatiquement si critères OK", "type": "toggle"},
+                ],
+            },
+        ],
+    },
+    {
         "id": "advanced",
         "title": "Avancé",
-        "icon": "⚙️",
+        "icon": "sliders",
         "sections": [
             {
                 "title": "Général",
@@ -345,4 +393,5 @@ TASK_META = [
     {"name": "upgrade_check", "label": "Vérification upgrades", "enabled_key": "task_upgrade_check_enabled"},
     {"name": "import_monitor", "label": "Surveillance imports", "enabled_key": "task_import_monitor_enabled"},
     {"name": "anime_handler", "label": "Handler anime", "enabled_key": "task_anime_handler_enabled"},
+    {"name": "wanted_search", "label": "Recherche wanted", "enabled_key": "task_wanted_search_enabled"},
 ]

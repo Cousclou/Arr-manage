@@ -11,6 +11,7 @@ from app.services.import_monitor import ImportMonitorService
 from app.services.radarr_manager import RadarrMonitorService
 from app.services.sonarr_manager import SonarrMonitorService
 from app.services.upgrade_service import UpgradeService
+from app.services.wanted_search import WantedSearchService
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -55,9 +56,15 @@ async def anime_handler(ctx: dict) -> dict:
         return await service.process()
 
 
+async def wanted_search(ctx: dict, series_id: int | None = None, movie_id: int | None = None) -> dict:
+    async with async_session() as db:
+        service = WantedSearchService(db)
+        return await service.run(series_id=series_id, movie_id=movie_id)
+
+
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
-    functions = [sonarr_monitor, radarr_monitor, upgrade_check, import_monitor, anime_handler]
+    functions = [sonarr_monitor, radarr_monitor, upgrade_check, import_monitor, anime_handler, wanted_search]
     on_startup = startup
     on_shutdown = shutdown
     max_jobs = 5

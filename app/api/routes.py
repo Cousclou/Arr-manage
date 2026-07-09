@@ -76,6 +76,7 @@ async def trigger_task(task_name: str) -> TriggerResponse:
         "upgrade_check",
         "import_monitor",
         "anime_handler",
+        "wanted_search",
     }
     if task_name not in valid_tasks:
         raise HTTPException(404, f"Tâche inconnue: {task_name}")

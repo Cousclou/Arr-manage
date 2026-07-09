@@ -69,6 +69,9 @@ class RadarrClient:
     async def trigger_movie_search(self, movie_ids: list[int]) -> dict:
         return await self.post("/command", {"name": "MoviesSearch", "movieIds": movie_ids})
 
+    async def grab_release(self, release: dict) -> dict:
+        return await self.post("/release", release)
+
     async def get_tags(self) -> list[dict]:
         return await self.get("/tag")
 

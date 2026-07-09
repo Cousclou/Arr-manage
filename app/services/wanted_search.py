@@ -1,0 +1,478 @@
+"""Recherche intelligente des médias wanted Sonarr/Radarr."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import re
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.clients.pushover import PushoverClient
+from app.clients.radarr import RadarrClient
+from app.clients.sonarr import SonarrClient
+from app.db.models import SearchAlert
+from app.services.runtime_config import RuntimeConfig
+from app.services.task_logger import TaskLogger
+
+logger = logging.getLogger(__name__)
+
+SEASON_PACK_RE = re.compile(
+    r"\b(S\d{2}(?!E\d)|Season\s*\d+|Complete|Integral|Saison\s*\d+|Season Pack)\b",
+    re.IGNORECASE,
+)
+
+
+@dataclass
+class WantedEpisode:
+    series_id: int
+    series_title: str
+    series_year: int
+    episode_id: int
+    season: int
+    episode: int
+
+
+@dataclass
+class WantedMovie:
+    movie_id: int
+    title: str
+    year: int
+
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
+        self.config = RuntimeConfig(db)
+        self.results: list[SearchResult] = []
+
+    async def run(
+        self,
+        series_id: int | None = None,
+        movie_id: int | None = None,
+    ) -> dict:
+        tlog = TaskLogger(self.db, "wanted_search", service="search")
+        cfg = self.config
+
+        if not await cfg.get_bool("task_wanted_search_enabled") and series_id is None and movie_id is None:
+            await tlog.finish("skipped", "Tâche désactivée")
+            return {"skipped": True}
+
+        stats = {
+            "sonarr_series": 0,
+            "sonarr_grabbed": 0,
+            "sonarr_notified": 0,
+            "radarr_movies": 0,
+            "radarr_grabbed": 0,
+            "radarr_notified": 0,
+            "errors": 0,
+            "dry_run": await cfg.get_bool("dry_run"),
+        }
+
+        sonarr = SonarrClient(
+            base_url=await cfg.get("sonarr_url"),
+            api_key=await cfg.get("sonarr_api_key"),
+        )
+        radarr = RadarrClient(
+            base_url=await cfg.get("radarr_url"),
+            api_key=await cfg.get("radarr_api_key"),
+        )
+        pushover = PushoverClient(
+            user_key=await cfg.get("pushover_user_key"),
+            api_token=await cfg.get("pushover_api_token"),
+        )
+
+        min_seeders = await cfg.get_int("search_min_seeders")
+        notify_low = await cfg.get_bool("search_notify_low_seeders")
+        auto_grab = await cfg.get_bool("search_auto_grab")
+        prefer_pack = await cfg.get_bool("search_prefer_season_pack")
+        season_first = await cfg.get_bool("search_old_series_season_first")
+        dry_run = stats["dry_run"]
+
+        if await cfg.get_bool("search_sonarr_enabled") or series_id:
+            try:
+                s = await self._search_sonarr(
+                    sonarr, pushover, series_id, min_seeders, notify_low, auto_grab,
+                    prefer_pack, season_first, dry_run, tlog,
+                )
+                stats.update(s)
+            except Exception as e:
+                logger.exception("Erreur recherche Sonarr")
+                tlog.detail("error", "Sonarr search", info=str(e))
+                stats["errors"] += 1
+
+        if await cfg.get_bool("search_radarr_enabled") or movie_id:
+            try:
+                r = await self._search_radarr(
+                    radarr, pushover, movie_id, min_seeders, notify_low, auto_grab, dry_run, tlog,
+                )
+                for k, v in r.items():
+                    stats[k] = stats.get(k, 0) + v
+            except Exception as e:
+                logger.exception("Erreur recherche Radarr")
+                tlog.detail("error", "Radarr search", info=str(e))
+                stats["errors"] += 1
+
+        tlog.set_stats(stats)
+        await tlog.finish("success")
+        await sonarr.close()
+        await radarr.close()
+        return stats
+
+    async def _search_sonarr(
+        self,
+        client: SonarrClient,
+        pushover: PushoverClient,
+        series_id: int | None,
+        min_seeders: int,
+        notify_low: bool,
+        auto_grab: bool,
+        prefer_pack: bool,
+        season_first: bool,
+        dry_run: bool,
+        tlog: TaskLogger,
+    ) -> dict:
+        stats = {"sonarr_series": 0, "sonarr_grabbed": 0, "sonarr_notified": 0}
+        current_year = datetime.now(timezone.utc).year
+
+        if series_id:
+            series_list = [await client.get_series_by_id(series_id)]
+        else:
+            series_list = await client.get_series()
+
+        for series in series_list:
+            if not series.get("monitored"):
+                continue
+
+            sid = series["id"]
+            title = series.get("title", "?")
+            year = series.get("year") or current_year
+            episodes = await client.get_episodes(sid)
+            missing = [
+                WantedEpisode(sid, title, year, ep["id"], ep.get("seasonNumber", 0), ep.get("episodeNumber", 0))
+                for ep in episodes
+                if ep.get("monitored") and not ep.get("hasFile")
+            ]
+            if not missing:
+                continue
+
+            stats["sonarr_series"] += 1
+            is_old = year < current_year
+
+            if is_old and season_first:
+                by_season: dict[int, list[WantedEpisode]] = defaultdict(list)
+                for ep in missing:
+                    by_season[ep.season].append(ep)
+
+                for season_num, season_eps in sorted(by_season.items()):
+                    if season_num == 0:
+                        for ep in season_eps:
+                            g, n = await self._search_episode(
+                                client, pushover, series, ep, min_seeders, notify_low,
+                                auto_grab, prefer_pack, dry_run, tlog,
+                            )
+                            stats["sonarr_grabbed"] += g
+                            stats["sonarr_notified"] += n
+                        continue
+
+                    await client.trigger_season_search(sid, season_num)
+                    await asyncio.sleep(1)
+
+                    first_ep = season_eps[0]
+                    releases = await client.search_releases(first_ep.episode_id)
+                    pack = self._best_release(releases, min_seeders, prefer_season_pack=True, season_only=True)
+
+                    if pack:
+                        g, n = await self._handle_release(
+                            client, pushover, title, first_ep.episode_id, pack,
+                            min_seeders, notify_low, auto_grab, dry_run, tlog,
+                            f"S{season_num:02d} season pack",
+                        )
+                        stats["sonarr_grabbed"] += g
+                        stats["sonarr_notified"] += n
+                        if g:
+                            continue
+
+                    for ep in season_eps:
+                        g, n = await self._search_episode(
+                            client, pushover, series, ep, min_seeders, notify_low,
+                            auto_grab, prefer_pack, dry_run, tlog,
+                        )
+                        stats["sonarr_grabbed"] += g
+                        stats["sonarr_notified"] += n
+                        await asyncio.sleep(0.5)
+            else:
+                by_season_eps: dict[int, list[WantedEpisode]] = defaultdict(list)
+                for ep in missing:
+                    by_season_eps[ep.season].append(ep)
+
+                for season_eps in by_season_eps.values():
+                    pack_done = False
+                    if prefer_pack and season_eps:
+                        first = season_eps[0]
+                        releases = await client.search_releases(first.episode_id)
+                        pack = self._best_release(releases, min_seeders, prefer_season_pack=True, season_only=True)
+                        if pack:
+                            g, n = await self._handle_release(
+                                client, pushover, title, first.episode_id, pack,
+                                min_seeders, notify_low, auto_grab, dry_run, tlog,
+                                f"S{first.season:02d}E{first.episode:02d} via pack",
+                            )
+                            stats["sonarr_grabbed"] += g
+                            stats["sonarr_notified"] += n
+                            if g:
+                                pack_done = True
+
+                    if not pack_done:
+                        for ep in season_eps:
+                            g, n = await self._search_episode(
+                                client, pushover, series, ep, min_seeders, notify_low,
+                                auto_grab, prefer_pack, dry_run, tlog,
+                            )
+                            stats["sonarr_grabbed"] += g
+                            stats["sonarr_notified"] += n
+                            await asyncio.sleep(0.5)
+
+        return stats
+
+    async def _search_episode(
+        self,
+        client: SonarrClient,
+        pushover: PushoverClient,
+        series: dict,
+        ep: WantedEpisode,
+        min_seeders: int,
+        notify_low: bool,
+        auto_grab: bool,
+        prefer_pack: bool,
+        dry_run: bool,
+        tlog: TaskLogger,
+    ) -> tuple[int, int]:
+        await client.trigger_episode_search([ep.episode_id])
+        await asyncio.sleep(0.8)
+        releases = await client.search_releases(ep.episode_id)
+        best = self._best_release(releases, min_seeders, prefer_pack, season_only=False)
+        if not best:
+            return 0, 0
+
+        label = f"S{ep.season:02d}E{ep.episode:02d}"
+        return await self._handle_release(
+            client, pushover, ep.series_title, ep.episode_id, best,
+            min_seeders, notify_low, auto_grab, dry_run, tlog, label,
+        )
+
+    async def _search_radarr(
+        self,
+        client: RadarrClient,
+        pushover: PushoverClient,
+        movie_id: int | None,
+        min_seeders: int,
+        notify_low: bool,
+        auto_grab: bool,
+        dry_run: bool,
+        tlog: TaskLogger,
+    ) -> dict:
+        stats = {"radarr_movies": 0, "radarr_grabbed": 0, "radarr_notified": 0}
+        current_year = datetime.now(timezone.utc).year
+
+        if movie_id:
+            movies = [await client.get_movie(movie_id)]
+        else:
+            movies = await client.get_movies()
+
+        for movie in movies:
+            if not movie.get("monitored") or movie.get("hasFile"):
+                continue
+
+            mid = movie["id"]
+            title = movie.get("title", "?")
+            year = movie.get("year") or current_year
+            stats["radarr_movies"] += 1
+
+            await client.trigger_movie_search([mid])
+            await asyncio.sleep(1)
+
+            releases = await client.search_releases(mid)
+            best = self._best_release(releases, min_seeders, prefer_season_pack=False, season_only=False)
+
+            if not best:
+                if year < current_year:
+                    tlog.detail("skipped", title, mid, "Aucune release trouvée (film ancien)")
+                continue
+
+            seeders = best.get("seeders") or 0
+            rel_title = best.get("title", "?")
+
+            if seeders < min_seeders:
+                if notify_low:
+                    notified = await self._notify_low_seeders(
+                        pushover, "radarr", mid, title,
+                        f"{rel_title} ({seeders} seeders, min {min_seeders})",
+                    )
+                    if notified:
+                        stats["radarr_notified"] += 1
+                        tlog.detail("alert", title, mid, f"Peu de seeders: {seeders}")
+                continue
+
+            if auto_grab and not dry_run:
+                best["movieId"] = mid
+                await client.grab_release(best)
+                stats["radarr_grabbed"] += 1
+                tlog.detail("grab", title, mid, rel_title)
+            else:
+                tlog.detail("found", title, mid, f"{rel_title} ({seeders} seeders)")
+
+            await asyncio.sleep(0.5)
+
+        return stats
+
+    async def _handle_release(
+        self,
+        client: SonarrClient,
+        pushover: PushoverClient,
+        series_title: str,
+        episode_id: int,
+        release: dict,
+        min_seeders: int,
+        notify_low: bool,
+        auto_grab: bool,
+        dry_run: bool,
+        tlog: TaskLogger,
+        label: str,
+    ) -> tuple[int, int]:
+        grabbed = notified = 0
+        seeders = release.get("seeders") or 0
+        rel_title = release.get("title", "?")
+        series_id = release.get("seriesId") or 0
+
+        if seeders < min_seeders:
+            if notify_low:
+                ok = await self._notify_low_seeders(
+                    pushover, "sonarr", series_id, series_title,
+                    f"{label}: {rel_title} ({seeders} seeders, min {min_seeders})",
+                    release.get("guid", ""),
+                )
+                if ok:
+                    notified = 1
+                    tlog.detail("alert", series_title, series_id, f"{label} · {seeders} seeders")
+            return grabbed, notified
+
+        if auto_grab and not dry_run:
+            release["episodeId"] = episode_id
+            await client.grab_release(release)
+            grabbed = 1
+            tlog.detail("grab", series_title, series_id, f"{label} · {rel_title}")
+        else:
+            tlog.detail("found", series_title, series_id, f"{label} · {rel_title} ({seeders}s)")
+
+        return grabbed, notified
+
+    def _best_release(
+        self,
+        releases: list[dict],
+        min_seeders: int,
+        prefer_season_pack: bool,
+        season_only: bool,
+    ) -> dict | None:
+        candidates = []
+        for rel in releases:
+            if rel.get("rejected"):
+                continue
+            seeders = rel.get("seeders") or 0
+            if seeders <= 0:
+                continue
+
+            is_pack = self._is_season_pack(rel)
+            if season_only and not is_pack:
+                continue
+
+            score = seeders
+            if prefer_season_pack and is_pack:
+                score += 10000
+            candidates.append((score, rel))
+
+        if not candidates:
+            return None
+
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        return candidates[0][1]
+
+    def _is_season_pack(self, release: dict) -> bool:
+        ep_nums = release.get("episodeNumbers") or []
+        if len(ep_nums) > 1:
+            return True
+        title = release.get("title", "")
+        return bool(SEASON_PACK_RE.search(title))
+
+    async def _notify_low_seeders(
+        self,
+        pushover: PushoverClient,
+        service: str,
+        external_id: int,
+        title: str,
+        message: str,
+        guid: str = "",
+    ) -> bool:
+        alert_key = f"search:{service}:{external_id}:{guid or title}"
+        result = await self.db.execute(
+            select(SearchAlert).where(SearchAlert.alert_key == alert_key)
+        )
+        if result.scalar_one_or_none():
+            return False
+
+        sent = await pushover.send(
+            f"MediaGuard - Peu de seeders ({service})",
+            f"{title}\n{message}",
+            priority=0,
+        )
+        if sent:
+            self.db.add(SearchAlert(
+                service=service,
+                external_id=external_id,
+                alert_key=alert_key,
+            ))
+            await self.db.commit()
+        return sent
+
+
+async def list_wanted_preview(
+    sonarr: SonarrClient | None,
+    radarr: RadarrClient | None,
+) -> dict:
+    """Aperçu des médias wanted pour l'interface."""
+    preview = {"sonarr": [], "radarr": [], "sonarr_count": 0, "radarr_count": 0}
+
+    if sonarr:
+        try:
+            for series in await sonarr.get_series():
+                if not series.get("monitored"):
+                    continue
+                eps = await sonarr.get_episodes(series["id"])
+                missing = sum(1 for e in eps if e.get("monitored") and not e.get("hasFile"))
+                if missing:
+                    preview["sonarr"].append({
+                        "id": series["id"],
+                        "title": series["title"],
+                        "year": series.get("year"),
+                        "missing": missing,
+                    })
+            preview["sonarr_count"] = len(preview["sonarr"])
+        except Exception:
+            logger.exception("Preview Sonarr wanted")
+
+    if radarr:
+        try:
+            for movie in await radarr.get_movies():
+                if movie.get("monitored") and not movie.get("hasFile"):
+                    preview["radarr"].append({
+                        "id": movie["id"],
+                        "title": movie["title"],
+                        "year": movie.get("year"),
+                    })
+            preview["radarr_count"] = len(preview["radarr"])
+        except Exception:
+            logger.exception("Preview Radarr wanted")
+
+    return preview

@@ -78,6 +78,16 @@ class SonarrClient:
     async def trigger_episode_search(self, episode_ids: list[int]) -> dict:
         return await self.post("/command", {"name": "EpisodeSearch", "episodeIds": episode_ids})
 
+    async def trigger_season_search(self, series_id: int, season_number: int) -> dict:
+        return await self.post("/command", {
+            "name": "SeasonSearch",
+            "seriesId": series_id,
+            "seasonNumber": season_number,
+        })
+
+    async def grab_release(self, release: dict) -> dict:
+        return await self.post("/release", release)
+
     async def get_tags(self) -> list[dict]:
         return await self.get("/tag")
 
