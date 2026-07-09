@@ -43,10 +43,11 @@ class WantedMovie:
     title: str
     year: int
 
+
+class WantedSearchService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self.config = RuntimeConfig(db)
-        self.results: list[SearchResult] = []
 
     async def run(
         self,
