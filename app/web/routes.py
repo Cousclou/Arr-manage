@@ -416,8 +416,10 @@ async def wanted_preview_partial(request: Request, db: AsyncSession = Depends(ge
         {
             "request": request,
             "preview": preview,
+            "settings": settings,
             "sonarr_configured": sonarr.configured,
             "radarr_configured": radarr.configured,
+            "active_tab": request.query_params.get("tab", "sonarr"),
         },
     )
 

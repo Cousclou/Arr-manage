@@ -394,6 +394,131 @@ body {
 .inline-form { display: inline; }
 
 /* Wanted search layout */
+.wanted-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 100%;
+}
+
+.wanted-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  padding: 0.25rem;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  width: fit-content;
+}
+
+.wanted-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+
+.wanted-tab:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+.wanted-tab.active {
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+}
+
+.wanted-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.25rem;
+  padding: 0 0.375rem;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.wanted-tab.active .wanted-tab-badge {
+  background: hsl(var(--primary) / 0.15);
+  color: hsl(var(--foreground));
+}
+
+.wanted-panel {
+  display: none;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.wanted-panel.active {
+  display: flex;
+}
+
+.wanted-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.wanted-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.wanted-panel-desc {
+  margin: 0.25rem 0 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.875rem;
+}
+
+.wanted-panel-tools {
+  gap: 1rem;
+}
+
+.wanted-table-card {
+  overflow: hidden;
+}
+
+.wanted-table-wrap {
+  max-height: min(70vh, 900px);
+  overflow: auto;
+}
+
+.wanted-table-wrap .table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: hsl(var(--card));
+}
+
+.strategy-list-compact li {
+  padding-bottom: 0.5rem;
+}
+
+.strategy-list-compact li:last-child {
+  padding-bottom: 0;
+}
+
+.field-hint {
+  margin-top: 0.375rem;
+}
+
 .wanted-layout {
   display: grid;
   grid-template-columns: 1fr 300px;
@@ -453,4 +578,7 @@ body {
   .settings-nav { flex-direction: row; flex-wrap: wrap; position: static; }
   .wanted-layout { grid-template-columns: 1fr; }
   .wanted-sidebar { position: static; }
+  .wanted-panel-header { flex-direction: column; }
+  .wanted-tabs { width: 100%; }
+  .wanted-tab { flex: 1; justify-content: center; }
 }

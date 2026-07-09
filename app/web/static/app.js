@@ -80,3 +80,43 @@ function updateManualSearchHint() {
 
 manualLookupType?.addEventListener('change', updateManualSearchHint);
 updateManualSearchHint();
+
+function activateWantedTab(tabId, pushState = true) {
+  document.querySelectorAll('.wanted-tab').forEach((btn) => {
+    const active = btn.dataset.wantedTab === tabId;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  document.querySelectorAll('.wanted-panel').forEach((panel) => {
+    const active = panel.id === `wanted-panel-${tabId}`;
+    panel.classList.toggle('active', active);
+    panel.hidden = !active;
+  });
+  if (pushState) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', tabId);
+    history.replaceState(null, '', url);
+  }
+}
+
+function initWantedTabs() {
+  const tabs = document.querySelectorAll('.wanted-tab');
+  if (!tabs.length) return;
+
+  tabs.forEach((btn) => {
+    btn.addEventListener('click', () => activateWantedTab(btn.dataset.wantedTab));
+  });
+
+  const urlTab = new URLSearchParams(window.location.search).get('tab');
+  if (urlTab && document.getElementById(`wanted-panel-${urlTab}`)) {
+    activateWantedTab(urlTab, false);
+  }
+}
+
+initWantedTabs();
+
+document.body.addEventListener('htmx:afterSwap', (event) => {
+  if (event.detail.target?.id === 'wanted-preview') {
+    initWantedTabs();
+  }
+});
