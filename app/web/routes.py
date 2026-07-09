@@ -19,7 +19,7 @@ from app.db.session import get_db
 from app.services.runtime_config import SETTING_GROUPS, TASK_META, RuntimeConfig, iter_setting_fields
 from app.services.pending_imports import fetch_pending_imports
 from app.services.task_logger import get_log_details
-from app.services.wanted_search import WantedSearchService, list_wanted_preview
+from app.services.wanted_search import list_wanted_preview
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -375,24 +375,46 @@ async def ignore_pending_import(
 async def wanted_page(request: Request, db: AsyncSession = Depends(get_db)):
     cfg = RuntimeConfig(db)
     settings = await cfg.all_settings()
+    logs, _ = await _fetch_logs(db, service="search", limit=8)
 
     sonarr = SonarrClient(base_url=settings.get("sonarr_url"), api_key=settings.get("sonarr_api_key"))
     radarr = RadarrClient(base_url=settings.get("radarr_url"), api_key=settings.get("radarr_api_key"))
-
-    preview = await list_wanted_preview(sonarr, radarr)
-    await sonarr.close()
-    await radarr.close()
-
-    logs, _ = await _fetch_logs(db, service="search", limit=8)
 
     return templates.TemplateResponse(
         "wanted.html",
         {
             "request": request,
             "page": "wanted",
-            "preview": preview,
             "settings": settings,
             "search_logs": logs,
+            "sonarr_configured": sonarr.configured,
+            "radarr_configured": radarr.configured,
+        },
+    )
+
+
+@router.get("/wanted/preview", response_class=HTMLResponse)
+async def wanted_preview_partial(request: Request, db: AsyncSession = Depends(get_db)):
+    cfg = RuntimeConfig(db)
+    settings = await cfg.all_settings()
+
+    sonarr = SonarrClient(base_url=settings.get("sonarr_url"), api_key=settings.get("sonarr_api_key"))
+    radarr = RadarrClient(base_url=settings.get("radarr_url"), api_key=settings.get("radarr_api_key"))
+
+    preview = await list_wanted_preview(
+        sonarr if sonarr.configured else None,
+        radarr if radarr.configured else None,
+    )
+    await sonarr.close()
+    await radarr.close()
+
+    return templates.TemplateResponse(
+        "partials/wanted_preview.html",
+        {
+            "request": request,
+            "preview": preview,
+            "sonarr_configured": sonarr.configured,
+            "radarr_configured": radarr.configured,
         },
     )
 
@@ -401,12 +423,26 @@ async def wanted_page(request: Request, db: AsyncSession = Depends(get_db)):
 async def wanted_search_manual(
     service: str = Form(...),
     media_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
 ):
-    redis = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
+    cfg = RuntimeConfig(db)
+    settings = await cfg.all_settings()
+
     if service == "sonarr":
-        await redis.enqueue_job("wanted_search", series_id=media_id)
+        client = SonarrClient(base_url=settings.get("sonarr_url"), api_key=settings.get("sonarr_api_key"))
+        if not client.configured:
+            return RedirectResponse("/wanted?error=sonarr", status_code=303)
+        job_kwargs: dict = {"series_id": media_id}
     elif service == "radarr":
-        await redis.enqueue_job("wanted_search", movie_id=media_id)
+        client = RadarrClient(base_url=settings.get("radarr_url"), api_key=settings.get("radarr_api_key"))
+        if not client.configured:
+            return RedirectResponse("/wanted?error=radarr", status_code=303)
+        job_kwargs = {"movie_id": media_id}
+    else:
+        return RedirectResponse("/wanted?error=service", status_code=303)
+
+    redis = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
+    await redis.enqueue_job("wanted_search", **job_kwargs)
     await redis.aclose()
     return RedirectResponse("/wanted?started=1", status_code=303)
 

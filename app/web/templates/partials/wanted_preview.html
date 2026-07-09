@@ -1,0 +1,92 @@
+{% from "macros/icons.html" import icon %}
+<div class="stats-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 1.5rem;">
+  <div class="card stat-card">
+    <p class="stat-label">Séries Sonarr wanted</p>
+    <p class="stat-value">{{ preview.sonarr_count }}</p>
+    <p class="stat-hint">{{ preview.sonarr_episodes }} épisodes manquants</p>
+  </div>
+  <div class="card stat-card">
+    <p class="stat-label">Films Radarr wanted</p>
+    <p class="stat-value">{{ preview.radarr_count }}</p>
+    {% if not radarr_configured %}
+    <p class="stat-hint">Radarr non configuré</p>
+    {% endif %}
+  </div>
+</div>
+
+{% if preview.errors %}
+<div class="alert alert-warning mb-4">
+  {% for service, message in preview.errors.items() %}
+  <p><strong>{{ service|capitalize }}</strong> : {{ message }}</p>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">{{ icon('tv', 18) }} Séries Sonarr</h2>
+      <p class="card-description">Épisodes manquants par série ({{ preview.sonarr_count }})</p>
+    </div>
+    <div class="card-content p-0">
+      {% if not sonarr_configured %}
+      <p class="empty-state p-4">Configurez Sonarr dans les paramètres pour voir les séries wanted.</p>
+      {% else %}
+      <table class="table table-compact">
+        <thead><tr><th>Série</th><th>Année</th><th>Manquants</th><th></th></tr></thead>
+        <tbody>
+          {% for s in preview.sonarr %}
+          <tr>
+            <td class="font-medium">{{ s.title }}</td>
+            <td class="text-muted">{{ s.year or '—' }}</td>
+            <td><span class="badge badge-warning">{{ s.missing }}</span></td>
+            <td class="text-right">
+              <form method="post" action="/wanted/search" class="inline-form">
+                <input type="hidden" name="service" value="sonarr">
+                <input type="hidden" name="media_id" value="{{ s.id }}">
+                <button type="submit" class="btn btn-outline btn-sm">Rechercher</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="empty-state">Aucune série wanted</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">{{ icon('film', 18) }} Films Radarr</h2>
+      <p class="card-description">Films surveillés sans fichier ({{ preview.radarr_count }})</p>
+    </div>
+    <div class="card-content p-0">
+      {% if not radarr_configured %}
+      <p class="empty-state p-4">Radarr non configuré — aucune recherche ne sera lancée sur ce service.</p>
+      {% else %}
+      <table class="table table-compact">
+        <thead><tr><th>Film</th><th>Année</th><th></th></tr></thead>
+        <tbody>
+          {% for m in preview.radarr %}
+          <tr>
+            <td class="font-medium">{{ m.title }}</td>
+            <td class="text-muted">{{ m.year or '—' }}</td>
+            <td class="text-right">
+              <form method="post" action="/wanted/search" class="inline-form">
+                <input type="hidden" name="service" value="radarr">
+                <input type="hidden" name="media_id" value="{{ m.id }}">
+                <button type="submit" class="btn btn-outline btn-sm">Rechercher</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="empty-state">Aucun film wanted</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+  </div>
+</div>

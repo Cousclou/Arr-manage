@@ -21,77 +21,20 @@
     {% if request.query_params.get('started') %}
     <div class="alert alert-success">Recherche lancée en arrière-plan.</div>
     {% endif %}
+    {% if request.query_params.get('error') == 'sonarr' %}
+    <div class="alert alert-warning">Sonarr n'est pas configuré.</div>
+    {% elif request.query_params.get('error') == 'radarr' %}
+    <div class="alert alert-warning">Radarr n'est pas configuré.</div>
+    {% endif %}
 
-    <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 1.5rem;">
-      <div class="card stat-card">
-        <p class="stat-label">Séries Sonarr wanted</p>
-        <p class="stat-value">{{ preview.sonarr_count }}</p>
-        <p class="stat-hint">{% set total = namespace(value=0) %}{% for s in preview.sonarr %}{% set total.value = total.value + s.missing %}{% endfor %}{{ total.value }} épisodes manquants</p>
-      </div>
-      <div class="card stat-card">
-        <p class="stat-label">Films Radarr wanted</p>
-        <p class="stat-value">{{ preview.radarr_count }}</p>
-      </div>
-    </div>
-
-    <div class="grid-2">
-      <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">{{ icon('tv', 18) }} Séries Sonarr</h2>
-          <p class="card-description">Épisodes manquants par série</p>
-        </div>
-        <div class="card-content p-0">
-          <table class="table table-compact">
-            <thead><tr><th>Série</th><th>Année</th><th>Manquants</th><th></th></tr></thead>
-            <tbody>
-              {% for s in preview.sonarr[:30] %}
-              <tr>
-                <td class="font-medium">{{ s.title }}</td>
-                <td class="text-muted">{{ s.year or '—' }}</td>
-                <td><span class="badge badge-warning">{{ s.missing }}</span></td>
-                <td class="text-right">
-                  <form method="post" action="/wanted/search" class="inline-form">
-                    <input type="hidden" name="service" value="sonarr">
-                    <input type="hidden" name="media_id" value="{{ s.id }}">
-                    <button type="submit" class="btn btn-outline btn-sm">Rechercher</button>
-                  </form>
-                </td>
-              </tr>
-              {% else %}
-              <tr><td colspan="4" class="empty-state">Aucune série wanted</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">{{ icon('film', 18) }} Films Radarr</h2>
-          <p class="card-description">Films surveillés sans fichier</p>
-        </div>
-        <div class="card-content p-0">
-          <table class="table table-compact">
-            <thead><tr><th>Film</th><th>Année</th><th></th></tr></thead>
-            <tbody>
-              {% for m in preview.radarr[:30] %}
-              <tr>
-                <td class="font-medium">{{ m.title }}</td>
-                <td class="text-muted">{{ m.year or '—' }}</td>
-                <td class="text-right">
-                  <form method="post" action="/wanted/search" class="inline-form">
-                    <input type="hidden" name="service" value="radarr">
-                    <input type="hidden" name="media_id" value="{{ m.id }}">
-                    <button type="submit" class="btn btn-outline btn-sm">Rechercher</button>
-                  </form>
-                </td>
-              </tr>
-              {% else %}
-              <tr><td colspan="3" class="empty-state">Aucun film wanted</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+    <div
+      id="wanted-preview"
+      hx-get="/wanted/preview"
+      hx-trigger="load"
+      hx-swap="innerHTML"
+    >
+      <div class="card p-6 text-center text-muted">
+        <p>Chargement des médias wanted…</p>
       </div>
     </div>
 
@@ -121,15 +64,22 @@
           <div class="field-group">
             <label>Service</label>
             <select name="service" class="input" id="manual-service">
+              {% if sonarr_configured %}
               <option value="sonarr">Sonarr (ID série)</option>
+              {% endif %}
+              {% if radarr_configured %}
               <option value="radarr">Radarr (ID film)</option>
+              {% endif %}
+              {% if not sonarr_configured and not radarr_configured %}
+              <option value="" disabled>Aucun service configuré</option>
+              {% endif %}
             </select>
           </div>
           <div class="field-group">
             <label>ID média</label>
-            <input type="number" name="media_id" class="input" required placeholder="ex: 42">
+            <input type="number" name="media_id" class="input" required placeholder="ex: 42" {% if not sonarr_configured and not radarr_configured %}disabled{% endif %}>
           </div>
-          <button type="submit" class="btn btn-primary w-full">{{ icon('zap', 14) }} Lancer la recherche</button>
+          <button type="submit" class="btn btn-primary w-full" {% if not sonarr_configured and not radarr_configured %}disabled{% endif %}>{{ icon('zap', 14) }} Lancer la recherche</button>
         </form>
       </div>
     </div>
@@ -142,19 +92,39 @@
         <ul class="strategy-list">
           <li>
             <span class="strategy-label">Séries &lt; année courante</span>
-            <span class="text-muted text-sm">Saison complète puis épisode par épisode</span>
+            <span class="text-muted text-sm">
+              {% if settings.get('search_old_series_season_first') == 'true' %}
+              Saison complète puis épisode par épisode
+              {% else %}
+              Épisode par épisode uniquement
+              {% endif %}
+            </span>
           </li>
           <li>
             <span class="strategy-label">Séries récentes</span>
-            <span class="text-muted text-sm">Épisode par épisode, season pack si dispo</span>
+            <span class="text-muted text-sm">
+              Épisode par épisode{% if settings.get('search_prefer_season_pack') == 'true' %}, season pack si dispo{% endif %}
+            </span>
           </li>
           <li>
             <span class="strategy-label">Films Radarr</span>
-            <span class="text-muted text-sm">Recherche directe + notif si peu de seeders</span>
+            <span class="text-muted text-sm">
+              {% if settings.get('search_radarr_enabled') == 'true' and radarr_configured %}
+              Recherche directe + notif si peu de seeders
+              {% elif not radarr_configured %}
+              Non configuré
+              {% else %}
+              Désactivé
+              {% endif %}
+            </span>
           </li>
           <li>
             <span class="strategy-label">Seeders min.</span>
             <span class="text-sm">{{ settings.get('search_min_seeders', '2') }}</span>
+          </li>
+          <li>
+            <span class="strategy-label">Notif. seeders</span>
+            <span class="text-sm">{{ 'Oui' if settings.get('search_notify_low_seeders') == 'true' else 'Non' }}</span>
           </li>
           <li>
             <span class="strategy-label">Auto-grab</span>

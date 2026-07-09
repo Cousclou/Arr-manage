@@ -10,9 +10,13 @@ from app.config import get_settings
 class RadarrClient:
     def __init__(self, base_url: str | None = None, api_key: str | None = None) -> None:
         settings = get_settings()
-        self.base_url = (base_url or settings.radarr_url).rstrip("/")
+        self.base_url = (base_url or settings.radarr_url or "").rstrip("/")
         self.api_key = api_key if api_key is not None else settings.radarr_api_key
         self._client: httpx.AsyncClient | None = None
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.base_url and self.api_key)
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -64,7 +68,23 @@ class RadarrClient:
         return await self.get(f"/moviefile/{file_id}")
 
     async def search_releases(self, movie_id: int) -> list[dict]:
-        return await self.post("/release", params={"movieId": movie_id})
+        return await self.get("/release", movieId=movie_id)
+
+    async def get_wanted_missing(
+        self,
+        page: int = 1,
+        page_size: int = 100,
+        *,
+        include_movie: bool = True,
+    ) -> dict:
+        return await self.get(
+            "/wanted/missing",
+            page=page,
+            pageSize=page_size,
+            sortKey="title",
+            sortDirection="ascending",
+            includeMovie=include_movie,
+        )
 
     async def trigger_movie_search(self, movie_ids: list[int]) -> dict:
         return await self.post("/command", {"name": "MoviesSearch", "movieIds": movie_ids})

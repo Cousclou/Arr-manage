@@ -92,7 +92,23 @@ class WantedSearchService:
         season_first = await cfg.get_bool("search_old_series_season_first")
         dry_run = stats["dry_run"]
 
-        if await cfg.get_bool("search_sonarr_enabled") or series_id:
+        sonarr_should = bool(series_id) or (
+            await cfg.get_bool("search_sonarr_enabled") and sonarr.configured
+        )
+        radarr_should = bool(movie_id) or (
+            await cfg.get_bool("search_radarr_enabled") and radarr.configured
+        )
+
+        if series_id is None and movie_id is None and not sonarr_should and not radarr_should:
+            await tlog.finish("skipped", "Aucun service activé ou configuré")
+            await sonarr.close()
+            await radarr.close()
+            return {"skipped": True}
+
+        if series_id and not sonarr.configured:
+            tlog.detail("error", "Sonarr search", info="Sonarr non configuré")
+            stats["errors"] += 1
+        elif sonarr_should:
             try:
                 s = await self._search_sonarr(
                     sonarr, pushover, series_id, min_seeders, notify_low, auto_grab,
@@ -104,7 +120,10 @@ class WantedSearchService:
                 tlog.detail("error", "Sonarr search", info=str(e))
                 stats["errors"] += 1
 
-        if await cfg.get_bool("search_radarr_enabled") or movie_id:
+        if movie_id and not radarr.configured:
+            tlog.detail("error", "Radarr search", info="Radarr non configuré")
+            stats["errors"] += 1
+        elif radarr_should:
             try:
                 r = await self._search_radarr(
                     radarr, pushover, movie_id, min_seeders, notify_low, auto_grab, dry_run, tlog,
@@ -442,38 +461,81 @@ async def list_wanted_preview(
     sonarr: SonarrClient | None,
     radarr: RadarrClient | None,
 ) -> dict:
-    """Aperçu des médias wanted pour l'interface."""
-    preview = {"sonarr": [], "radarr": [], "sonarr_count": 0, "radarr_count": 0}
+    """Aperçu des médias wanted pour l'interface (via API wanted/missing)."""
+    preview: dict = {
+        "sonarr": [],
+        "radarr": [],
+        "sonarr_count": 0,
+        "sonarr_episodes": 0,
+        "radarr_count": 0,
+        "errors": {},
+    }
 
-    if sonarr:
+    if sonarr and sonarr.configured:
         try:
-            for series in await sonarr.get_series():
-                if not series.get("monitored"):
-                    continue
-                eps = await sonarr.get_episodes(series["id"])
-                missing = sum(1 for e in eps if e.get("monitored") and not e.get("hasFile"))
-                if missing:
-                    preview["sonarr"].append({
-                        "id": series["id"],
-                        "title": series["title"],
-                        "year": series.get("year"),
-                        "missing": missing,
-                    })
+            by_series: dict[int, dict] = {}
+            page = 1
+            while True:
+                data = await sonarr.get_wanted_missing(page=page, page_size=250)
+                records = data.get("records", [])
+                for ep in records:
+                    series = ep.get("series") or {}
+                    sid = series.get("id") or ep.get("seriesId")
+                    if not sid:
+                        continue
+                    if sid not in by_series:
+                        by_series[sid] = {
+                            "id": sid,
+                            "title": series.get("title") or f"Série #{sid}",
+                            "year": series.get("year"),
+                            "missing": 0,
+                        }
+                    by_series[sid]["missing"] += 1
+
+                total = data.get("totalRecords", 0)
+                page_size = data.get("pageSize", 250)
+                if page * page_size >= total or not records:
+                    break
+                page += 1
+
+            preview["sonarr"] = sorted(
+                by_series.values(),
+                key=lambda s: (s.get("title") or "").lower(),
+            )
             preview["sonarr_count"] = len(preview["sonarr"])
-        except Exception:
+            preview["sonarr_episodes"] = sum(s["missing"] for s in preview["sonarr"])
+        except Exception as e:
             logger.exception("Preview Sonarr wanted")
+            preview["errors"]["sonarr"] = str(e)
 
-    if radarr:
+    if radarr and radarr.configured:
         try:
-            for movie in await radarr.get_movies():
-                if movie.get("monitored") and not movie.get("hasFile"):
-                    preview["radarr"].append({
-                        "id": movie["id"],
-                        "title": movie["title"],
+            movies: list[dict] = []
+            page = 1
+            while True:
+                data = await radarr.get_wanted_missing(page=page, page_size=250)
+                records = data.get("records", [])
+                for record in records:
+                    movie = record.get("movie") or record
+                    movies.append({
+                        "id": movie.get("id") or record.get("id"),
+                        "title": movie.get("title") or "?",
                         "year": movie.get("year"),
                     })
+
+                total = data.get("totalRecords", 0)
+                page_size = data.get("pageSize", 250)
+                if page * page_size >= total or not records:
+                    break
+                page += 1
+
+            preview["radarr"] = sorted(
+                movies,
+                key=lambda m: (m.get("title") or "").lower(),
+            )
             preview["radarr_count"] = len(preview["radarr"])
-        except Exception:
+        except Exception as e:
             logger.exception("Preview Radarr wanted")
+            preview["errors"]["radarr"] = str(e)
 
     return preview

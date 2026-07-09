@@ -10,9 +10,13 @@ from app.config import get_settings
 class SonarrClient:
     def __init__(self, base_url: str | None = None, api_key: str | None = None) -> None:
         settings = get_settings()
-        self.base_url = (base_url or settings.sonarr_url).rstrip("/")
+        self.base_url = (base_url or settings.sonarr_url or "").rstrip("/")
         self.api_key = api_key if api_key is not None else settings.sonarr_api_key
         self._client: httpx.AsyncClient | None = None
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.base_url and self.api_key)
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -73,7 +77,23 @@ class SonarrClient:
         return await self.get(f"/episodefile/{file_id}")
 
     async def search_releases(self, episode_id: int) -> list[dict]:
-        return await self.post("/release", params={"episodeId": episode_id})
+        return await self.get("/release", episodeId=episode_id)
+
+    async def get_wanted_missing(
+        self,
+        page: int = 1,
+        page_size: int = 100,
+        *,
+        include_series: bool = True,
+    ) -> dict:
+        return await self.get(
+            "/wanted/missing",
+            page=page,
+            pageSize=page_size,
+            sortKey="series.title",
+            sortDirection="ascending",
+            includeSeries=include_series,
+        )
 
     async def trigger_episode_search(self, episode_ids: list[int]) -> dict:
         return await self.post("/command", {"name": "EpisodeSearch", "episodeIds": episode_ids})

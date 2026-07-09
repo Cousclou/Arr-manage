@@ -61,7 +61,7 @@ SETTING_DEFAULTS: dict[str, str] = {
     "task_wanted_search_enabled": "false",
     "wanted_search_interval": "1800",
     "search_sonarr_enabled": "true",
-    "search_radarr_enabled": "true",
+    "search_radarr_enabled": "false",
     "search_min_seeders": "2",
     "search_notify_low_seeders": "true",
     "search_prefer_season_pack": "true",
@@ -259,12 +259,6 @@ SETTING_GROUPS: list[dict] = [
                     {"key": "upgrade_notify_pushover", "label": "Notifier si upgrade disponible", "type": "toggle"},
                 ],
             },
-            {
-                "title": "Alertes recherche",
-                "fields": [
-                    {"key": "search_notify_low_seeders", "label": "Notifier si seeders insuffisants (recherche)", "type": "toggle"},
-                ],
-            },
         ],
     },
     {
@@ -347,16 +341,22 @@ SETTING_GROUPS: list[dict] = [
             },
             {
                 "title": "Stratégie Sonarr",
-                "description": "Séries antérieures à l'année en cours : saison complète puis épisode par épisode.",
+                "description": "Séries antérieures à l'année en cours : saison complète puis épisode par épisode. Séries récentes : épisode par épisode, season pack si disponible.",
                 "fields": [
                     {"key": "search_old_series_season_first", "label": "Séries anciennes : recherche saison d'abord", "type": "toggle"},
-                    {"key": "search_prefer_season_pack", "label": "Préférer les season packs", "type": "toggle"},
+                    {"key": "search_prefer_season_pack", "label": "Préférer les season packs (séries récentes)", "type": "toggle"},
                 ],
+            },
+            {
+                "title": "Stratégie Radarr",
+                "description": "Recherche directe sur chaque film wanted. Les films sans release sont ignorés ; une notification est envoyée si une release est trouvée mais avec trop peu de seeders (voir critères ci-dessous).",
+                "fields": [],
             },
             {
                 "title": "Critères & actions",
                 "fields": [
                     {"key": "search_min_seeders", "label": "Seeders minimum", "type": "number"},
+                    {"key": "search_notify_low_seeders", "label": "Notifier si seeders insuffisants", "type": "toggle"},
                     {"key": "search_auto_grab", "label": "Télécharger automatiquement si critères OK", "type": "toggle"},
                 ],
             },
