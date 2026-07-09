@@ -1,3 +1,4 @@
+// Settings tabs
 document.querySelectorAll('.tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     const tabId = btn.dataset.tab;
@@ -5,5 +6,32 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(`tab-${tabId}`)?.classList.add('active');
+  });
+});
+
+function toggleLogRow(btn, logId) {
+  const row = document.getElementById(`row-details-${logId}`);
+  const logRow = btn.closest('.log-row');
+  if (!row) return;
+
+  const isHidden = row.hidden;
+  row.hidden = !isHidden;
+  logRow?.classList.toggle('expanded', isHidden);
+  btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+}
+
+// Close other expanded rows when opening one (accordion behavior)
+document.body.addEventListener('click', (e) => {
+  const btn = e.target.closest('[hx-get*="/logs/"]');
+  if (!btn) return;
+  const logId = btn.getAttribute('onclick')?.match(/\d+/)?.[0];
+  if (!logId) return;
+
+  document.querySelectorAll('.log-details-row').forEach((row) => {
+    if (row.id !== `row-details-${logId}`) {
+      row.hidden = true;
+      const otherId = row.id.replace('row-details-', '');
+      document.querySelector(`[onclick*="${otherId}"]`)?.closest('.log-row')?.classList.remove('expanded');
+    }
   });
 });

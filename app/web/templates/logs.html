@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "macros.html" import badge %}
+{% block title %}Journal — MediaGuard{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1 class="page-title">Journal d'activité</h1>
+    <p class="page-description">Historique détaillé par service avec médias traités.</p>
+  </div>
+</header>
+
+<div class="tabs-list mb-6">
+  <a href="/logs" class="tab-trigger {% if not active_service %}active{% endif %}">Tous</a>
+  {% for svc in services %}
+  <a href="/logs?service={{ svc }}" class="tab-trigger {% if active_service == svc %}active{% endif %}">
+    <span class="service-dot service-{{ svc }}"></span>
+    {{ svc | capitalize }}
+    {% if service_counts.get(svc) %}<span class="tab-count">{{ service_counts[svc] }}</span>{% endif %}
+  </a>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-content p-0">
+    {% include "partials/log_table.html" %}
+  </div>
+</div>
+
+{% if has_more %}
+<div class="flex-center mt-4">
+  <a href="/logs?service={{ active_service or '' }}&offset={{ next_offset }}" class="btn btn-outline">Charger plus</a>
+</div>
+{% endif %}
+{% endblock %}

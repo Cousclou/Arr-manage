@@ -6,8 +6,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.radarr import RadarrClient
-from app.db.models import ExcludedMedia, MediaUpgradeRule, TaskLog
+from app.db.models import ExcludedMedia
 from app.services.runtime_config import RuntimeConfig
+from app.services.task_logger import TaskLogger
 from app.services.upgrade_service import UpgradeService
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ class RadarrMonitorService:
         self.config = RuntimeConfig(db)
 
     async def process_all_movies(self) -> dict:
+        tlog = TaskLogger(self.db, "radarr_monitor")
         stats = {
             "processed": 0,
             "skipped": 0,
@@ -31,7 +33,7 @@ class RadarrMonitorService:
 
         cfg = self.config
         if not await cfg.get_bool("task_radarr_monitor_enabled"):
-            await self._log_task("radarr_monitor", "skipped", "Tâche désactivée")
+            await tlog.finish("skipped", "Tâche désactivée")
             return stats
 
         dry_run = await cfg.get_bool("dry_run")
@@ -49,7 +51,8 @@ class RadarrMonitorService:
             movies = await client.get_movies()
         except Exception as e:
             logger.exception("Impossible de récupérer les films Radarr")
-            await self._log_task("radarr_monitor", "error", str(e))
+            tlog.detail("error", "Connexion Radarr", info=str(e))
+            await tlog.finish("error", str(e))
             await client.close()
             return stats
 
@@ -58,6 +61,8 @@ class RadarrMonitorService:
 
         for movie in movies:
             movie_id = movie["id"]
+            title = movie.get("title", "?")
+
             if movie_id in excluded_ids:
                 stats["skipped"] += 1
                 continue
@@ -69,27 +74,18 @@ class RadarrMonitorService:
 
             try:
                 result = await self._process_movie(
-                    client,
-                    movie,
-                    unmonitor_downloaded,
-                    keep_if_upgrade,
-                    upgrade_checker,
-                    dry_run,
+                    client, movie, unmonitor_downloaded, keep_if_upgrade, upgrade_checker, dry_run, tlog
                 )
                 stats["processed"] += 1
                 stats["unmonitored"] += result["unmonitored"]
                 stats["kept_for_upgrade"] += result["kept_for_upgrade"]
-            except Exception:
-                logger.exception("Erreur traitement film %s", movie.get("title"))
+            except Exception as e:
+                logger.exception("Erreur traitement film %s", title)
+                tlog.detail("error", title, movie_id, str(e))
                 stats["errors"] += 1
 
-        mode = " [DRY-RUN]" if dry_run else ""
-        await self._log_task(
-            "radarr_monitor",
-            "success",
-            f"{stats['processed']} films{mode}, {stats['unmonitored']} désactivés, "
-            f"{stats['kept_for_upgrade']} gardés (upgrade dispo), {stats['skipped_tags']} exclus par tag",
-        )
+        tlog.set_stats(stats)
+        await tlog.finish("success")
         await client.close()
         return stats
 
@@ -107,7 +103,10 @@ class RadarrMonitorService:
         keep_if_upgrade: bool,
         upgrade_checker: UpgradeService | None,
         dry_run: bool,
+        tlog: TaskLogger,
     ) -> dict:
+        movie_id = movie["id"]
+        title = movie.get("title", "?")
         unmonitored = 0
         kept_for_upgrade = 0
 
@@ -117,16 +116,14 @@ class RadarrMonitorService:
         if keep_if_upgrade and upgrade_checker:
             has_upgrade = await upgrade_checker.has_radarr_upgrade(movie, client)
             if has_upgrade:
+                tlog.detail("kept_upgrade", title, movie_id, "Upgrade plus léger disponible")
                 kept_for_upgrade = 1
                 return {"unmonitored": 0, "kept_for_upgrade": kept_for_upgrade}
 
         if not dry_run:
             movie["monitored"] = False
             await client.update_movie(movie)
+        tlog.detail("unmonitor", title, movie_id, "Suivi désactivé")
         unmonitored = 1
 
         return {"unmonitored": unmonitored, "kept_for_upgrade": kept_for_upgrade}
-
-    async def _log_task(self, name: str, status: str, message: str) -> None:
-        self.db.add(TaskLog(task_name=name, status=status, message=message))
-        await self.db.commit()

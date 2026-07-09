@@ -1,0 +1,48 @@
+{% from "macros.html" import badge, action_badge %}
+<table class="table">
+  <thead>
+    <tr>
+      <th class="w-32">Date</th>
+      <th class="w-24">Service</th>
+      <th class="w-28">Statut</th>
+      <th>Résumé</th>
+      <th class="w-20 text-right">Détails</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for log in logs %}
+    <tr class="log-row" data-log-id="{{ log.id }}">
+      <td class="text-muted text-sm nowrap">{{ log.created_at.strftime('%d/%m %H:%M') if log.created_at else '-' }}</td>
+      <td><span class="service-tag service-{{ log.service }}">{{ log.service }}</span></td>
+      <td>{{ badge(log.status, 'success' if log.status == 'success' else ('destructive' if log.status == 'error' else 'secondary')) }}</td>
+      <td class="text-sm">{{ log.message or '—' }}</td>
+      <td class="text-right">
+        {% if log.details_count > 0 %}
+        <button class="btn btn-ghost btn-sm btn-icon"
+                hx-get="/logs/{{ log.id }}/details"
+                hx-target="#details-{{ log.id }}"
+                hx-swap="innerHTML"
+                aria-expanded="false"
+                onclick="toggleLogRow(this, {{ log.id }})">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="chevron"><polyline points="6 9 12 15 18 9"/></svg>
+          <span class="text-xs">{{ log.details_count }}{% if log.details_truncated %}+{% endif %}</span>
+        </button>
+        {% else %}
+        <span class="text-muted text-xs">—</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% if log.details_count > 0 %}
+    <tr class="log-details-row" id="row-details-{{ log.id }}" hidden>
+      <td colspan="5" class="p-0">
+        <div id="details-{{ log.id }}" class="log-details-panel"></div>
+      </td>
+    </tr>
+    {% endif %}
+    {% else %}
+    <tr>
+      <td colspan="5" class="empty-state">Aucun log disponible</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

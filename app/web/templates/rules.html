@@ -2,68 +2,74 @@
 {% block title %}Règles format — MediaGuard{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>Règles de format</h1>
-  <p class="subtitle">Exigences de codec ou seuil de taille par média spécifique.</p>
-</div>
+<header class="page-header">
+  <div>
+    <h1 class="page-title">Règles de format</h1>
+    <p class="page-description">Exigences de codec ou seuil de taille par média.</p>
+  </div>
+</header>
 
-<div class="grid grid-2 section">
+<div class="grid-2">
   <div class="card">
-    <h2>Ajouter une règle</h2>
-    <form method="post" action="/rules" class="stack-form">
-      <div class="field-group">
-        <label>Service</label>
-        <select name="service" class="input">
-          <option value="radarr">Radarr</option>
-          <option value="sonarr">Sonarr</option>
-        </select>
-      </div>
-      <div class="field-group">
-        <label>ID média</label>
-        <input type="number" name="external_id" class="input" required>
-      </div>
-      <div class="field-group">
-        <label>Titre</label>
-        <input type="text" name="title" class="input" required>
-      </div>
-      <div class="field-group">
-        <label>Codec requis</label>
-        <select name="required_codec" class="input">
-          <option value="any">Aucun (global)</option>
-          <option value="av1">AV1</option>
-          <option value="h265">H.265</option>
-        </select>
-      </div>
-      <div class="field-group">
-        <label>Seuil taille personnalisé (Go, optionnel)</label>
-        <input type="number" name="min_size_gb" class="input" step="0.1">
-      </div>
-      <button type="submit" class="btn btn-primary">Ajouter</button>
-    </form>
+    <div class="card-header"><h2 class="card-title">Ajouter une règle</h2></div>
+    <div class="card-content">
+      <form method="post" action="/rules" class="stack-form">
+        <div class="field-group">
+          <label>Service</label>
+          <select name="service" class="input">
+            <option value="radarr">Radarr</option>
+            <option value="sonarr">Sonarr</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>ID média</label>
+          <input type="number" name="external_id" class="input" required>
+        </div>
+        <div class="field-group">
+          <label>Titre</label>
+          <input type="text" name="title" class="input" required>
+        </div>
+        <div class="field-group">
+          <label>Codec requis</label>
+          <select name="required_codec" class="input">
+            <option value="any">Aucun</option>
+            <option value="av1">AV1</option>
+            <option value="h265">H.265</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Seuil taille (Go)</label>
+          <input type="number" name="min_size_gb" class="input" step="0.1">
+        </div>
+        <button type="submit" class="btn btn-primary">Ajouter</button>
+      </form>
+    </div>
   </div>
 
   <div class="card">
-    <h2>Règles actives ({{ rules | length }})</h2>
-    <table class="data-table">
-      <thead><tr><th>Service</th><th>Média</th><th>Codec</th><th>Seuil</th><th></th></tr></thead>
-      <tbody>
-        {% for rule in rules %}
-        <tr>
-          <td><span class="badge">{{ rule.service }}</span></td>
-          <td>{{ rule.title }} <small class="muted">#{{ rule.external_id }}</small></td>
-          <td>{{ rule.required_codec | upper }}</td>
-          <td>{{ rule.min_size_gb or '—' }} Go</td>
-          <td>
-            <form method="post" action="/rules/{{ rule.id }}/delete">
-              <button type="submit" class="btn btn-sm btn-danger">✕</button>
-            </form>
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="5" class="muted">Aucune règle</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="card-header"><h2 class="card-title">Règles actives ({{ rules | length }})</h2></div>
+    <div class="card-content p-0">
+      <table class="table">
+        <thead><tr><th>Service</th><th>Média</th><th>Codec</th><th>Seuil</th><th></th></tr></thead>
+        <tbody>
+          {% for rule in rules %}
+          <tr>
+            <td><span class="service-tag service-{{ rule.service }}">{{ rule.service }}</span></td>
+            <td>{{ rule.title }} <span class="text-xs text-muted">#{{ rule.external_id }}</span></td>
+            <td>{{ rule.required_codec | upper }}</td>
+            <td class="text-muted">{{ rule.min_size_gb or '—' }} Go</td>
+            <td class="text-right">
+              <form method="post" action="/rules/{{ rule.id }}/delete">
+                <button type="submit" class="btn btn-ghost btn-sm btn-danger">✕</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="empty-state">Aucune règle</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 {% endblock %}

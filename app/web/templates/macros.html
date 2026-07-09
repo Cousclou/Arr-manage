@@ -1,0 +1,25 @@
+{# Macros shadcn-style #}
+{% macro badge(text, variant='default') %}
+<span class="badge badge-{{ variant }}">{{ text }}</span>
+{% endmacro %}
+
+{% macro status_dot(ok) %}
+<span class="status-dot {% if ok %}online{% else %}offline{% endif %}"></span>
+{% endmacro %}
+
+{% macro action_badge(action) %}
+{% set labels = {
+  'unmonitor': ('Désactivé', 'secondary'),
+  'unmonitor_season': ('Saison', 'secondary'),
+  'new_only': ('Nouv. ép.', 'outline'),
+  'upgrade': ('Upgrade', 'default'),
+  'kept_upgrade': ('Gardé', 'warning'),
+  'anime_switch': ('→ Standard', 'warning'),
+  'anime_revert': ('→ Anime', 'success'),
+  'anime_keep': ('Standard', 'secondary'),
+  'alert': ('Alerte', 'destructive'),
+  'error': ('Erreur', 'destructive'),
+} %}
+{% set info = labels.get(action, (action, 'secondary')) %}
+<span class="badge badge-{{ info[1] }}">{{ info[0] }}</span>
+{% endmacro %}

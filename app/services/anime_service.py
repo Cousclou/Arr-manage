@@ -7,8 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.sonarr import SonarrClient
-from app.db.models import AnimeWatch, TaskLog
+from app.db.models import AnimeWatch
 from app.services.runtime_config import RuntimeConfig
+from app.services.task_logger import TaskLogger
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +20,10 @@ class AnimeService:
         self.config = RuntimeConfig(db)
 
     async def process(self) -> dict:
+        tlog = TaskLogger(self.db, "anime_handler")
         cfg = self.config
         if not await cfg.get_bool("task_anime_handler_enabled") or not await cfg.get_bool("anime_enabled"):
-            await self._log_task("anime_handler", "skipped", "Tâche désactivée")
+            await tlog.finish("skipped", "Tâche désactivée")
             return {"skipped": True}
 
         stats = {"new_watches": 0, "reverted_to_anime": 0, "kept_standard": 0, "errors": 0, "dry_run": False}
@@ -39,7 +41,8 @@ class AnimeService:
             series_list = await client.get_series()
         except Exception as e:
             logger.exception("Erreur récupération séries pour anime")
-            await self._log_task("anime_handler", "error", str(e))
+            tlog.detail("error", "Connexion Sonarr", info=str(e))
+            await tlog.finish("error", str(e))
             await client.close()
             return stats
 
@@ -50,6 +53,7 @@ class AnimeService:
             if series.get("seriesType") != "anime":
                 continue
 
+            title = series.get("title", "?")
             try:
                 year = series.get("year", current_year)
                 if year >= current_year:
@@ -63,10 +67,12 @@ class AnimeService:
 
                 if not dry_run:
                     await self._switch_to_standard(client, series)
-                self.db.add(AnimeWatch(sonarr_series_id=series["id"], title=series["title"]))
+                self.db.add(AnimeWatch(sonarr_series_id=series["id"], title=title))
+                tlog.detail("anime_switch", title, series["id"], f"Année {year} → standard")
                 stats["new_watches"] += 1
-            except Exception:
-                logger.exception("Erreur anime série %s", series.get("title"))
+            except Exception as e:
+                logger.exception("Erreur anime série %s", title)
+                tlog.detail("error", title, series.get("id"), str(e))
                 stats["errors"] += 1
 
         await self.db.commit()
@@ -85,17 +91,21 @@ class AnimeService:
                     await client.update_series(series)
                     watch.resolved = True
                     watch.resolved_at = datetime.now(timezone.utc)
+                    tlog.detail("anime_revert", watch.title, watch.sonarr_series_id, "Fichier trouvé → anime")
                     stats["reverted_to_anime"] += 1
                 else:
                     watch.resolved = True
                     watch.resolved_at = datetime.now(timezone.utc)
+                    tlog.detail("anime_keep", watch.title, watch.sonarr_series_id, "Reste en standard")
                     stats["kept_standard"] += 1
-            except Exception:
+            except Exception as e:
                 logger.exception("Erreur résolution watch anime %s", watch.title)
+                tlog.detail("error", watch.title, watch.sonarr_series_id, str(e))
                 stats["errors"] += 1
 
         await self.db.commit()
-        await self._log_task("anime_handler", "success", str(stats))
+        tlog.set_stats(stats)
+        await tlog.finish("success")
         await client.close()
         return stats
 
@@ -111,7 +121,3 @@ class AnimeService:
         series["seriesType"] = "standard"
         await client.update_series(series)
         logger.info("Série %s basculée en standard (année %s)", series["title"], series.get("year"))
-
-    async def _log_task(self, name: str, status: str, message: str) -> None:
-        self.db.add(TaskLog(task_name=name, status=status, message=message))
-        await self.db.commit()

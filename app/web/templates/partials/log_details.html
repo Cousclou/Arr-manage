@@ -1,0 +1,24 @@
+{% from "macros.html" import action_badge %}
+<div class="log-details-inner">
+  {% if log.details_truncated %}
+  <p class="text-xs text-muted mb-3">Affichage limité aux {{ details | length }} premiers médias traités.</p>
+  {% endif %}
+  <table class="table table-compact">
+    <thead>
+      <tr>
+        <th>Action</th>
+        <th>Média</th>
+        <th>Info</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in details %}
+      <tr>
+        <td>{{ action_badge(d.action) }}</td>
+        <td class="font-medium">{{ d.media_title }}</td>
+        <td class="text-muted text-sm">{{ d.detail or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

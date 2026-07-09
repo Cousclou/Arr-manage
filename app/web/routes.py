@@ -17,10 +17,32 @@ from app.config import get_settings
 from app.db.models import AnimeWatch, ExcludedMedia, IgnoredImport, MediaUpgradeRule, TaskLog
 from app.db.session import get_db
 from app.services.runtime_config import SETTING_GROUPS, TASK_META, RuntimeConfig
+from app.services.task_logger import get_log_details
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 templates = Jinja2Templates(directory="app/web/templates")
+
+LOG_SERVICES = ["sonarr", "radarr", "upgrade", "import", "anime"]
+LOG_PAGE_SIZE = 25
+
+
+async def _fetch_logs(db: AsyncSession, service: str | None = None, offset: int = 0, limit: int = LOG_PAGE_SIZE):
+    query = select(TaskLog).order_by(TaskLog.created_at.desc())
+    if service:
+        query = query.where(TaskLog.service == service)
+    query = query.offset(offset).limit(limit + 1)
+    result = await db.execute(query)
+    rows = list(result.scalars().all())
+    has_more = len(rows) > limit
+    return rows[:limit], has_more
+
+
+async def _service_counts(db: AsyncSession) -> dict[str, int]:
+    result = await db.execute(
+        select(TaskLog.service, func.count()).group_by(TaskLog.service)
+    )
+    return dict(result.all())
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -52,13 +74,8 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     finally:
         await radarr.close()
 
-    logs_result = await db.execute(select(TaskLog).order_by(TaskLog.created_at.desc()).limit(15))
-    logs = list(logs_result.scalars().all())
-
-    stats_result = await db.execute(
-        select(TaskLog.task_name, func.count()).group_by(TaskLog.task_name)
-    )
-    task_stats = dict(stats_result.all())
+    logs, _ = await _fetch_logs(db, limit=10)
+    service_stats = await _service_counts(db)
 
     anime_pending = await db.scalar(
         select(func.count()).select_from(AnimeWatch).where(AnimeWatch.resolved.is_(False))
@@ -74,11 +91,51 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
             "pushover_ok": pushover.configured,
             "dry_run": settings.get("dry_run") == "true",
             "logs": logs,
-            "task_stats": task_stats,
+            "service_stats": service_stats,
             "tasks": TASK_META,
             "settings": settings,
             "anime_pending": anime_pending or 0,
         },
+    )
+
+
+@router.get("/logs", response_class=HTMLResponse)
+async def logs_page(
+    request: Request,
+    service: str | None = None,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    if service and service not in LOG_SERVICES:
+        service = None
+
+    logs, has_more = await _fetch_logs(db, service=service, offset=offset)
+    service_counts = await _service_counts(db)
+
+    return templates.TemplateResponse(
+        "logs.html",
+        {
+            "request": request,
+            "page": "logs",
+            "logs": logs,
+            "active_service": service,
+            "services": LOG_SERVICES,
+            "service_counts": service_counts,
+            "has_more": has_more,
+            "next_offset": offset + LOG_PAGE_SIZE,
+        },
+    )
+
+
+@router.get("/logs/{log_id}/details", response_class=HTMLResponse)
+async def log_details_partial(log_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    log, details = await get_log_details(db, log_id)
+    if not log:
+        return HTMLResponse("<p class='text-muted text-sm p-4'>Log introuvable.</p>")
+
+    return templates.TemplateResponse(
+        "partials/log_details.html",
+        {"request": request, "log": log, "details": details},
     )
 
 

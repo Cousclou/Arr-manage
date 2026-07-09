@@ -1,73 +1,75 @@
 {% extends "base.html" %}
+{% from "macros.html" import badge %}
 {% block title %}Imports ignorés — MediaGuard{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>Imports ignorés</h1>
-  <p class="subtitle">Fichiers cross-seed ou imports à ne pas alerter via Pushover.</p>
-</div>
+<header class="page-header">
+  <div>
+    <h1 class="page-title">Imports ignorés</h1>
+    <p class="page-description">Fichiers cross-seed ou imports à ne pas alerter via Pushover.</p>
+  </div>
+</header>
 
 {% if request.query_params.get('added') %}
 <div class="alert alert-success">Entrée ajoutée.</div>
 {% endif %}
-{% if request.query_params.get('deleted') %}
-<div class="alert alert-success">Entrée supprimée.</div>
-{% endif %}
 
-<div class="grid grid-2 section">
+<div class="grid-2">
   <div class="card">
-    <h2>Ajouter</h2>
-    <form method="post" action="/ignored" class="stack-form">
-      <div class="field-group">
-        <label>Service</label>
-        <select name="service" class="input" required>
-          <option value="sonarr">Sonarr</option>
-          <option value="radarr">Radarr</option>
-        </select>
-      </div>
-      <div class="field-group">
-        <label>ID externe (queue/history)</label>
-        <input type="number" name="external_id" class="input" required>
-      </div>
-      <div class="field-group">
-        <label>Titre</label>
-        <input type="text" name="title" class="input" required>
-      </div>
-      <div class="field-group">
-        <label>Chemin (optionnel)</label>
-        <input type="text" name="path" class="input">
-      </div>
-      <div class="field-group">
-        <label>Raison</label>
-        <input type="text" name="reason" class="input" placeholder="cross-seed">
-      </div>
-      <button type="submit" class="btn btn-primary">Ajouter</button>
-    </form>
+    <div class="card-header"><h2 class="card-title">Ajouter</h2></div>
+    <div class="card-content">
+      <form method="post" action="/ignored" class="stack-form">
+        <div class="field-group">
+          <label>Service</label>
+          <select name="service" class="input" required>
+            <option value="sonarr">Sonarr</option>
+            <option value="radarr">Radarr</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>ID externe</label>
+          <input type="number" name="external_id" class="input" required>
+        </div>
+        <div class="field-group">
+          <label>Titre</label>
+          <input type="text" name="title" class="input" required>
+        </div>
+        <div class="field-group">
+          <label>Chemin (optionnel)</label>
+          <input type="text" name="path" class="input">
+        </div>
+        <div class="field-group">
+          <label>Raison</label>
+          <input type="text" name="reason" class="input" placeholder="cross-seed">
+        </div>
+        <button type="submit" class="btn btn-primary">Ajouter</button>
+      </form>
+    </div>
   </div>
 
   <div class="card">
-    <h2>Liste ({{ items | length }})</h2>
-    <table class="data-table">
-      <thead>
-        <tr><th>Service</th><th>ID</th><th>Titre</th><th></th></tr>
-      </thead>
-      <tbody>
-        {% for item in items %}
-        <tr>
-          <td><span class="badge">{{ item.service }}</span></td>
-          <td>{{ item.external_id }}</td>
-          <td>{{ item.title }}<br><small class="muted">{{ item.reason or '' }}</small></td>
-          <td>
-            <form method="post" action="/ignored/{{ item.id }}/delete">
-              <button type="submit" class="btn btn-sm btn-danger">✕</button>
-            </form>
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="4" class="muted">Aucun import ignoré</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="card-header"><h2 class="card-title">Liste ({{ items | length }})</h2></div>
+    <div class="card-content p-0">
+      <table class="table">
+        <thead><tr><th>Service</th><th>ID</th><th>Titre</th><th></th></tr></thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td><span class="service-tag service-{{ item.service }}">{{ item.service }}</span></td>
+            <td class="text-muted">{{ item.external_id }}</td>
+            <td>{{ item.title }}<br><span class="text-xs text-muted">{{ item.reason or '' }}</span></td>
+            <td class="text-right">
+              <form method="post" action="/ignored/{{ item.id }}/delete">
+                <button type="submit" class="btn btn-ghost btn-sm btn-danger">✕</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="empty-state">Aucun import ignoré</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 {% endblock %}

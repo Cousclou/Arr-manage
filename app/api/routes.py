@@ -10,6 +10,7 @@ from app.api.schemas import (
     HealthResponse,
     IgnoredImportCreate,
     IgnoredImportResponse,
+    LogDetailResponse,
     SettingsResponse,
     SettingsUpdate,
     TaskLogResponse,
@@ -24,6 +25,7 @@ from app.config import get_settings
 from app.db.models import IgnoredImport, MediaUpgradeRule, TaskLog
 from app.db.session import get_db
 from app.services.runtime_config import SETTING_DEFAULTS, RuntimeConfig
+from app.services.task_logger import get_log_details
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -91,11 +93,24 @@ async def trigger_task(task_name: str) -> TriggerResponse:
 
 
 @router.get("/logs", response_model=list[TaskLogResponse])
-async def get_logs(limit: int = 50, db: AsyncSession = Depends(get_db)) -> list[TaskLog]:
-    result = await db.execute(
-        select(TaskLog).order_by(TaskLog.created_at.desc()).limit(limit)
-    )
+async def get_logs(
+    limit: int = 50,
+    service: str | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> list[TaskLog]:
+    query = select(TaskLog).order_by(TaskLog.created_at.desc()).limit(limit)
+    if service:
+        query = query.where(TaskLog.service == service)
+    result = await db.execute(query)
     return list(result.scalars().all())
+
+
+@router.get("/logs/{log_id}/details", response_model=list[LogDetailResponse])
+async def get_log_details_api(log_id: int, db: AsyncSession = Depends(get_db)) -> list:
+    log, details = await get_log_details(db, log_id)
+    if not log:
+        raise HTTPException(404, "Log introuvable")
+    return details
 
 
 @router.get("/ignored-imports", response_model=list[IgnoredImportResponse])

@@ -1,47 +1,80 @@
 {% extends "base.html" %}
+{% from "macros.html" import badge, status_dot %}
 {% block title %}Tableau de bord — MediaGuard{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1>Tableau de bord</h1>
+<header class="page-header">
+  <div>
+    <h1 class="page-title">Tableau de bord</h1>
+    <p class="page-description">Vue d'ensemble de vos services et tâches automatisées.</p>
+  </div>
   {% if dry_run %}
-  <span class="badge badge-warn">Mode simulation actif</span>
+  <div class="header-actions">{{ badge('Mode simulation', 'warning') }}</div>
   {% endif %}
-</div>
+</header>
 
 {% if request.query_params.get('triggered') %}
-<div class="alert alert-success">Tâche lancée avec succès.</div>
+<div class="alert alert-success">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+  Tâche lancée avec succès.
+</div>
 {% endif %}
 
-<div class="grid grid-3">
-  <div class="card status-card {% if sonarr_ok %}ok{% else %}error{% endif %}">
-    <div class="card-label">Sonarr</div>
-    <div class="card-value">{% if sonarr_ok %}Connecté{% else %}Hors ligne{% endif %}</div>
+<section class="stats-grid">
+  <div class="card stat-card">
+    <div class="stat-header">
+      <span class="stat-label">Sonarr</span>
+      {{ status_dot(sonarr_ok) }}
+    </div>
+    <p class="stat-value">{% if sonarr_ok %}Connecté{% else %}Hors ligne{% endif %}</p>
+    <p class="stat-hint">API v3</p>
   </div>
-  <div class="card status-card {% if radarr_ok %}ok{% else %}error{% endif %}">
-    <div class="card-label">Radarr</div>
-    <div class="card-value">{% if radarr_ok %}Connecté{% else %}Hors ligne{% endif %}</div>
+  <div class="card stat-card">
+    <div class="stat-header">
+      <span class="stat-label">Radarr</span>
+      {{ status_dot(radarr_ok) }}
+    </div>
+    <p class="stat-value">{% if radarr_ok %}Connecté{% else %}Hors ligne{% endif %}</p>
+    <p class="stat-hint">API v3</p>
   </div>
-  <div class="card status-card {% if pushover_ok %}ok{% else %}warn{% endif %}">
-    <div class="card-label">Pushover</div>
-    <div class="card-value">{% if pushover_ok %}Configuré{% else %}Non configuré{% endif %}</div>
+  <div class="card stat-card">
+    <div class="stat-header">
+      <span class="stat-label">Pushover</span>
+      {{ status_dot(pushover_ok) }}
+    </div>
+    <p class="stat-value">{% if pushover_ok %}Actif{% else %}Non configuré{% endif %}</p>
+    <p class="stat-hint">Notifications</p>
   </div>
-</div>
+  <div class="card stat-card">
+    <div class="stat-header">
+      <span class="stat-label">Anime en attente</span>
+    </div>
+    <p class="stat-value">{{ anime_pending }}</p>
+    <p class="stat-hint"><a href="/anime" class="link">Voir le suivi →</a></p>
+  </div>
+</section>
 
-<div class="grid grid-2 section">
+<div class="grid-2">
   <div class="card">
-    <h2>Tâches</h2>
-    <div class="task-list">
+    <div class="card-header">
+      <h2 class="card-title">Tâches</h2>
+      <p class="card-description">Lancer manuellement une tâche de maintenance.</p>
+    </div>
+    <div class="card-content">
       {% for task in tasks %}
-      <div class="task-row">
-        <div>
-          <strong>{{ task.label }}</strong>
-          <span class="task-status {% if settings.get(task.enabled_key) == 'true' %}enabled{% else %}disabled{% endif %}">
-            {{ 'Activée' if settings.get(task.enabled_key) == 'true' else 'Désactivée' }}
+      <div class="list-item">
+        <div class="list-item-content">
+          <span class="list-item-title">{{ task.label }}</span>
+          <span class="list-item-meta">
+            {% if settings.get(task.enabled_key) == 'true' %}
+            <span class="text-success">Activée</span>
+            {% else %}
+            <span class="text-muted">Désactivée</span>
+            {% endif %}
           </span>
         </div>
         <form method="post" action="/tasks/{{ task.name }}/run">
-          <button type="submit" class="btn btn-sm">Lancer</button>
+          <button type="submit" class="btn btn-outline btn-sm">Lancer</button>
         </form>
       </div>
       {% endfor %}
@@ -49,41 +82,36 @@
   </div>
 
   <div class="card">
-    <h2>Statistiques</h2>
-    <ul class="stat-list">
-      <li><span>Anime en attente</span><strong>{{ anime_pending }}</strong></li>
-      {% for name, count in task_stats.items() %}
-      <li><span>{{ name }}</span><strong>{{ count }} exécutions</strong></li>
-      {% else %}
-      <li class="muted">Aucune exécution enregistrée</li>
-      {% endfor %}
-    </ul>
+    <div class="card-header">
+      <h2 class="card-title">Activité récente</h2>
+      <p class="card-description">Dernières exécutions par service.</p>
+    </div>
+    <div class="card-content">
+      <div class="service-pills">
+        {% for svc, count in service_stats.items() %}
+        <a href="/logs?service={{ svc }}" class="service-pill service-{{ svc }}">
+          <span class="service-pill-name">{{ svc | capitalize }}</span>
+          <span class="service-pill-count">{{ count }}</span>
+        </a>
+        {% else %}
+        <p class="text-muted text-sm">Aucune activité enregistrée.</p>
+        {% endfor %}
+      </div>
+      <a href="/logs" class="btn btn-ghost btn-sm mt-4">Voir tout le journal →</a>
+    </div>
   </div>
 </div>
 
-<div class="card section">
-  <h2>Journal récent</h2>
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>Tâche</th>
-        <th>Statut</th>
-        <th>Message</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for log in logs %}
-      <tr>
-        <td class="nowrap">{{ log.created_at.strftime('%d/%m %H:%M') if log.created_at else '-' }}</td>
-        <td>{{ log.task_name }}</td>
-        <td><span class="badge badge-{{ log.status }}">{{ log.status }}</span></td>
-        <td class="truncate">{{ log.message or '' }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="4" class="muted">Aucun log</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="card mt-6">
+  <div class="card-header flex-between">
+    <div>
+      <h2 class="card-title">Derniers logs</h2>
+      <p class="card-description">Résumé des exécutions récentes.</p>
+    </div>
+    <a href="/logs" class="btn btn-outline btn-sm">Journal complet</a>
+  </div>
+  <div class="card-content p-0">
+    {% include "partials/log_table.html" %}
+  </div>
 </div>
 {% endblock %}

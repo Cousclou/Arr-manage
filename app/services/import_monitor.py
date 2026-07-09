@@ -8,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.clients.pushover import PushoverClient
 from app.clients.radarr import RadarrClient
 from app.clients.sonarr import SonarrClient
-from app.db.models import IgnoredImport, ImportAlert, TaskLog
+from app.db.models import IgnoredImport, ImportAlert
 from app.services.runtime_config import RuntimeConfig
+from app.services.task_logger import TaskLogger
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +24,10 @@ class ImportMonitorService:
         self.config = RuntimeConfig(db)
 
     async def check_imports(self) -> dict:
+        tlog = TaskLogger(self.db, "import_monitor")
         cfg = self.config
         if not await cfg.get_bool("task_import_monitor_enabled"):
-            await self._log_task("import_monitor", "skipped", "Tâche désactivée")
+            await tlog.finish("skipped", "Tâche désactivée")
             return {"skipped": True}
 
         stats = {"sonarr_alerts": 0, "radarr_alerts": 0, "ignored": 0, "errors": 0}
@@ -51,22 +53,25 @@ class ImportMonitorService:
         try:
             if check_queue or check_history:
                 stats["sonarr_alerts"] = await self._check_sonarr(
-                    sonarr, pushover, ignored, notify_enabled, check_queue, check_history
+                    sonarr, pushover, ignored, notify_enabled, check_queue, check_history, tlog
                 )
-        except Exception:
+        except Exception as e:
             logger.exception("Erreur surveillance imports Sonarr")
+            tlog.detail("error", "Sonarr imports", info=str(e))
             stats["errors"] += 1
 
         try:
             if check_queue or check_history:
                 stats["radarr_alerts"] = await self._check_radarr(
-                    radarr, pushover, ignored, notify_enabled, check_queue, check_history
+                    radarr, pushover, ignored, notify_enabled, check_queue, check_history, tlog
                 )
-        except Exception:
+        except Exception as e:
             logger.exception("Erreur surveillance imports Radarr")
+            tlog.detail("error", "Radarr imports", info=str(e))
             stats["errors"] += 1
 
-        await self._log_task("import_monitor", "success", str(stats))
+        tlog.set_stats(stats)
+        await tlog.finish("success")
         await sonarr.close()
         await radarr.close()
         return stats
@@ -94,13 +99,18 @@ class ImportMonitorService:
         ignored: set[tuple[str, int]],
         notified: set[str],
         notify_enabled: bool,
+        tlog: TaskLogger,
+        media_title: str,
     ) -> bool:
-        if not notify_enabled:
-            return False
         if (service, external_id) in ignored:
             return False
         if alert_key in notified:
             return False
+
+        tlog.detail("alert", media_title, external_id, f"[{service}] {title}")
+
+        if not notify_enabled:
+            return True
 
         sent = await pushover.send(title, message, priority=1)
         if sent:
@@ -117,6 +127,7 @@ class ImportMonitorService:
         notify_enabled: bool,
         check_queue: bool,
         check_history: bool,
+        tlog: TaskLogger,
     ) -> int:
         alerts = 0
         notified = await self._get_notified_keys()
@@ -129,13 +140,13 @@ class ImportMonitorService:
                 item_id = item.get("id", 0)
 
                 if ("import" in status and status in IMPORT_ERROR_STATUSES) or tracked_status == IMPORT_TRACKED:
-                    title = item.get("title") or item.get("series", {}).get("title", "Inconnu")
+                    media_title = item.get("title") or item.get("series", {}).get("title", "Inconnu")
                     path = item.get("outputPath") or item.get("downloadId", "")
                     if await self._notify_if_new(
                         pushover, "sonarr", item_id, f"sonarr:queue:{item_id}",
                         "Sonarr - Import manuel requis",
-                        f"{title}\nChemin: {path}\nStatut: {status or tracked_status}",
-                        ignored, notified, notify_enabled,
+                        f"{media_title}\nChemin: {path}\nStatut: {status or tracked_status}",
+                        ignored, notified, notify_enabled, tlog, media_title,
                     ):
                         alerts += 1
 
@@ -150,7 +161,7 @@ class ImportMonitorService:
                     pushover, "sonarr", item_id, f"sonarr:history:{item_id}",
                     "Sonarr - Téléchargement échoué",
                     f"{source_title}\nAction manuelle requise",
-                    ignored, notified, notify_enabled,
+                    ignored, notified, notify_enabled, tlog, source_title,
                 ):
                     alerts += 1
 
@@ -164,6 +175,7 @@ class ImportMonitorService:
         notify_enabled: bool,
         check_queue: bool,
         check_history: bool,
+        tlog: TaskLogger,
     ) -> int:
         alerts = 0
         notified = await self._get_notified_keys()
@@ -176,13 +188,13 @@ class ImportMonitorService:
                 item_id = item.get("id", 0)
 
                 if ("import" in status and status in IMPORT_ERROR_STATUSES) or tracked_status == IMPORT_TRACKED:
-                    title = item.get("title") or item.get("movie", {}).get("title", "Inconnu")
+                    media_title = item.get("title") or item.get("movie", {}).get("title", "Inconnu")
                     path = item.get("outputPath") or item.get("downloadId", "")
                     if await self._notify_if_new(
                         pushover, "radarr", item_id, f"radarr:queue:{item_id}",
                         "Radarr - Import manuel requis",
-                        f"{title}\nChemin: {path}\nStatut: {status or tracked_status}",
-                        ignored, notified, notify_enabled,
+                        f"{media_title}\nChemin: {path}\nStatut: {status or tracked_status}",
+                        ignored, notified, notify_enabled, tlog, media_title,
                     ):
                         alerts += 1
 
@@ -197,12 +209,8 @@ class ImportMonitorService:
                     pushover, "radarr", item_id, f"radarr:history:{item_id}",
                     "Radarr - Import/Téléchargement échoué",
                     f"{source_title}\nAction manuelle requise",
-                    ignored, notified, notify_enabled,
+                    ignored, notified, notify_enabled, tlog, source_title,
                 ):
                     alerts += 1
 
         return alerts
-
-    async def _log_task(self, name: str, status: str, message: str) -> None:
-        self.db.add(TaskLog(task_name=name, status=status, message=message))
-        await self.db.commit()

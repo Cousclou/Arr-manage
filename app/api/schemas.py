@@ -54,9 +54,22 @@ class UpgradeRuleResponse(BaseModel):
 class TaskLogResponse(BaseModel):
     id: int
     task_name: str
+    service: str
     status: str
     message: str | None
+    details_count: int
+    details_truncated: bool
     created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class LogDetailResponse(BaseModel):
+    id: int
+    action: str
+    media_title: str
+    external_id: int | None
+    detail: str | None
 
     model_config = {"from_attributes": True}
 

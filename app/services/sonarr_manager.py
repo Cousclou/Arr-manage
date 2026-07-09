@@ -7,8 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.sonarr import SonarrClient
-from app.db.models import ExcludedMedia, TaskLog
+from app.db.models import ExcludedMedia
 from app.services.runtime_config import RuntimeConfig
+from app.services.task_logger import TaskLogger
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ class SonarrMonitorService:
         self.config = RuntimeConfig(db)
 
     async def process_all_series(self) -> dict:
+        tlog = TaskLogger(self.db, "sonarr_monitor")
         stats = {
             "series_processed": 0,
             "series_skipped": 0,
@@ -31,7 +33,7 @@ class SonarrMonitorService:
 
         cfg = self.config
         if not await cfg.get_bool("task_sonarr_monitor_enabled"):
-            await self._log_task("sonarr_monitor", "skipped", "Tâche désactivée")
+            await tlog.finish("skipped", "Tâche désactivée")
             return stats
 
         dry_run = await cfg.get_bool("dry_run")
@@ -46,7 +48,8 @@ class SonarrMonitorService:
             series_list = await client.get_series()
         except Exception as e:
             logger.exception("Impossible de récupérer les séries Sonarr")
-            await self._log_task("sonarr_monitor", "error", str(e))
+            tlog.detail("error", "Connexion Sonarr", info=str(e))
+            await tlog.finish("error", str(e))
             await client.close()
             return stats
 
@@ -60,6 +63,8 @@ class SonarrMonitorService:
 
         for series in series_list:
             series_id = series["id"]
+            title = series.get("title", "?")
+
             if series_id in excluded_ids:
                 stats["series_skipped"] += 1
                 continue
@@ -79,29 +84,20 @@ class SonarrMonitorService:
 
             try:
                 result = await self._process_series(
-                    client,
-                    series,
-                    unmonitor_downloaded,
-                    set_new_only,
-                    unmonitor_seasons,
-                    dry_run,
+                    client, series, unmonitor_downloaded, set_new_only, unmonitor_seasons, dry_run, tlog
                 )
                 stats["series_processed"] += 1
                 stats["episodes_unmonitored"] += result["unmonitored"]
                 stats["seasons_unmonitored"] += result["seasons"]
                 if result["set_new_only"]:
                     stats["series_new_only"] += 1
-            except Exception:
-                logger.exception("Erreur traitement série %s", series.get("title"))
+            except Exception as e:
+                logger.exception("Erreur traitement série %s", title)
+                tlog.detail("error", title, series_id, str(e))
                 stats["errors"] += 1
 
-        mode = " [DRY-RUN]" if dry_run else ""
-        await self._log_task(
-            "sonarr_monitor",
-            "success",
-            f"{stats['series_processed']} séries{mode}, {stats['episodes_unmonitored']} épisodes, "
-            f"{stats['seasons_unmonitored']} saisons désactivés, {stats['series_skipped']} ignorées",
-        )
+        tlog.set_stats(stats)
+        await tlog.finish("success")
         await client.close()
         return stats
 
@@ -119,8 +115,10 @@ class SonarrMonitorService:
         set_new_only_flag: bool,
         unmonitor_seasons: bool,
         dry_run: bool,
+        tlog: TaskLogger,
     ) -> dict:
         series_id = series["id"]
+        title = series.get("title", "?")
         episodes = await client.get_episodes(series_id)
         unmonitored_count = 0
         seasons_count = 0
@@ -132,8 +130,8 @@ class SonarrMonitorService:
                     by_season[ep.get("seasonNumber", 0)].append(ep)
 
                 ids_to_unmonitor: list[int] = []
-                for season_eps in by_season.values():
-                    if not season_eps:
+                for season_num, season_eps in by_season.items():
+                    if not season_eps or season_num == 0:
                         continue
                     all_have_file = all(ep.get("hasFile") for ep in season_eps)
                     if all_have_file:
@@ -141,11 +139,25 @@ class SonarrMonitorService:
                         ids_to_unmonitor.extend(monitored)
                         if monitored:
                             seasons_count += 1
+                            tlog.detail(
+                                "unmonitor_season",
+                                title,
+                                series_id,
+                                f"S{season_num:02d} · {len(monitored)} épisodes",
+                            )
                 if ids_to_unmonitor and not dry_run:
                     await client.set_episode_monitored(ids_to_unmonitor, monitored=False)
                 unmonitored_count = len(ids_to_unmonitor)
             else:
-                downloaded_ids = [ep["id"] for ep in episodes if ep.get("hasFile") and ep.get("monitored")]
+                downloaded = [ep for ep in episodes if ep.get("hasFile") and ep.get("monitored")]
+                downloaded_ids = [ep["id"] for ep in downloaded]
+                if downloaded_ids:
+                    tlog.detail(
+                        "unmonitor",
+                        title,
+                        series_id,
+                        f"{len(downloaded_ids)} épisode(s)",
+                    )
                 if downloaded_ids and not dry_run:
                     await client.set_episode_monitored(downloaded_ids, monitored=False)
                 unmonitored_count = len(downloaded_ids)
@@ -155,10 +167,7 @@ class SonarrMonitorService:
             if not dry_run:
                 series["monitorNewItems"] = "newItems"
                 await client.update_series(series)
+            tlog.detail("new_only", title, series_id, "Nouveaux épisodes uniquement")
             set_new_only = True
 
         return {"unmonitored": unmonitored_count, "seasons": seasons_count, "set_new_only": set_new_only}
-
-    async def _log_task(self, name: str, status: str, message: str) -> None:
-        self.db.add(TaskLog(task_name=name, status=status, message=message))
-        await self.db.commit()
