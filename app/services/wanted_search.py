@@ -488,6 +488,8 @@ async def list_wanted_preview(
                             "id": sid,
                             "title": series.get("title") or f"Série #{sid}",
                             "year": series.get("year"),
+                            "tvdb": series.get("tvdbId"),
+                            "tmdb": series.get("tmdbId"),
                             "missing": 0,
                         }
                     by_series[sid]["missing"] += 1
@@ -521,6 +523,8 @@ async def list_wanted_preview(
                         "id": movie.get("id") or record.get("id"),
                         "title": movie.get("title") or "?",
                         "year": movie.get("year"),
+                        "tmdb": movie.get("tmdbId"),
+                        "tvdb": movie.get("tvdbId"),
                     })
 
                 total = data.get("totalRecords", 0)

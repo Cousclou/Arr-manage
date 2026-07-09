@@ -62,3 +62,21 @@ document.body.addEventListener('click', (e) => {
     }
   });
 });
+
+const manualLookupType = document.getElementById('manual-lookup-type');
+const manualQueryHint = document.getElementById('manual-query-hint');
+
+const lookupHints = {
+  id: 'ID interne de la série ou du film dans Sonarr/Radarr.',
+  title: 'Titre exact ou partiel tel qu\'il apparaît dans la bibliothèque.',
+  tvdb: 'Identifiant TheTVDB.',
+  tmdb: 'Identifiant TMDb.',
+};
+
+function updateManualSearchHint() {
+  if (!manualLookupType || !manualQueryHint) return;
+  manualQueryHint.textContent = lookupHints[manualLookupType.value] || lookupHints.id;
+}
+
+manualLookupType?.addEventListener('change', updateManualSearchHint);
+updateManualSearchHint();

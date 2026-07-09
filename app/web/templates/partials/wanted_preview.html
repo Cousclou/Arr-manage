@@ -33,23 +33,25 @@
       <p class="empty-state p-4">Configurez Sonarr dans les paramètres pour voir les séries wanted.</p>
       {% else %}
       <table class="table table-compact">
-        <thead><tr><th>Série</th><th>Année</th><th>Manquants</th><th></th></tr></thead>
+        <thead><tr><th>Série</th><th>Année</th><th>TVDB</th><th>Manquants</th><th></th></tr></thead>
         <tbody>
           {% for s in preview.sonarr %}
           <tr>
             <td class="font-medium">{{ s.title }}</td>
             <td class="text-muted">{{ s.year or '—' }}</td>
+            <td class="text-muted text-sm">{{ s.tvdb or '—' }}</td>
             <td><span class="badge badge-warning">{{ s.missing }}</span></td>
             <td class="text-right">
               <form method="post" action="/wanted/search" class="inline-form">
                 <input type="hidden" name="service" value="sonarr">
-                <input type="hidden" name="media_id" value="{{ s.id }}">
+                <input type="hidden" name="lookup_type" value="id">
+                <input type="hidden" name="media_query" value="{{ s.id }}">
                 <button type="submit" class="btn btn-outline btn-sm">Rechercher</button>
               </form>
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="4" class="empty-state">Aucune série wanted</td></tr>
+          <tr><td colspan="5" class="empty-state">Aucune série wanted</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -67,22 +69,24 @@
       <p class="empty-state p-4">Radarr non configuré — aucune recherche ne sera lancée sur ce service.</p>
       {% else %}
       <table class="table table-compact">
-        <thead><tr><th>Film</th><th>Année</th><th></th></tr></thead>
+        <thead><tr><th>Film</th><th>Année</th><th>TMDb</th><th></th></tr></thead>
         <tbody>
           {% for m in preview.radarr %}
           <tr>
             <td class="font-medium">{{ m.title }}</td>
             <td class="text-muted">{{ m.year or '—' }}</td>
+            <td class="text-muted text-sm">{{ m.tmdb or '—' }}</td>
             <td class="text-right">
               <form method="post" action="/wanted/search" class="inline-form">
                 <input type="hidden" name="service" value="radarr">
-                <input type="hidden" name="media_id" value="{{ m.id }}">
+                <input type="hidden" name="lookup_type" value="id">
+                <input type="hidden" name="media_query" value="{{ m.id }}">
                 <button type="submit" class="btn btn-outline btn-sm">Rechercher</button>
               </form>
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="3" class="empty-state">Aucun film wanted</td></tr>
+          <tr><td colspan="4" class="empty-state">Aucun film wanted</td></tr>
           {% endfor %}
         </tbody>
       </table>

@@ -25,6 +25,14 @@
     <div class="alert alert-warning">Sonarr n'est pas configuré.</div>
     {% elif request.query_params.get('error') == 'radarr' %}
     <div class="alert alert-warning">Radarr n'est pas configuré.</div>
+    {% elif request.query_params.get('error') == 'notfound' %}
+    <div class="alert alert-warning">Aucun média trouvé dans la bibliothèque pour cette recherche.</div>
+    {% elif request.query_params.get('error') == 'ambiguous' %}
+    <div class="alert alert-warning">Plusieurs résultats correspondent — précisez le titre ou utilisez un ID externe.</div>
+    {% elif request.query_params.get('error') == 'invalid' %}
+    <div class="alert alert-warning">Valeur de recherche invalide.</div>
+    {% elif request.query_params.get('error') == 'empty' %}
+    <div class="alert alert-warning">Indiquez un identifiant ou un titre.</div>
     {% endif %}
 
     <div
@@ -60,15 +68,15 @@
         <p class="card-description">Lancer sur une série ou un film précis</p>
       </div>
       <div class="card-content">
-        <form method="post" action="/wanted/search" class="stack-form">
+        <form method="post" action="/wanted/search" class="stack-form" id="manual-search-form">
           <div class="field-group">
             <label>Service</label>
             <select name="service" class="input" id="manual-service">
               {% if sonarr_configured %}
-              <option value="sonarr">Sonarr (ID série)</option>
+              <option value="sonarr">Sonarr (série)</option>
               {% endif %}
               {% if radarr_configured %}
-              <option value="radarr">Radarr (ID film)</option>
+              <option value="radarr">Radarr (film)</option>
               {% endif %}
               {% if not sonarr_configured and not radarr_configured %}
               <option value="" disabled>Aucun service configuré</option>
@@ -76,8 +84,18 @@
             </select>
           </div>
           <div class="field-group">
-            <label>ID média</label>
-            <input type="number" name="media_id" class="input" required placeholder="ex: 42" {% if not sonarr_configured and not radarr_configured %}disabled{% endif %}>
+            <label>Rechercher par</label>
+            <select name="lookup_type" class="input" id="manual-lookup-type">
+              <option value="id">ID interne (Sonarr/Radarr)</option>
+              <option value="title">Titre</option>
+              <option value="tvdb">TVDB</option>
+              <option value="tmdb">TMDb</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label id="manual-query-label">Valeur</label>
+            <input type="text" name="media_query" class="input" required placeholder="ex: 42, Call It Love, 12345" {% if not sonarr_configured and not radarr_configured %}disabled{% endif %}>
+            <p class="field-hint text-muted text-sm" id="manual-query-hint">ID interne de la série ou du film dans Sonarr/Radarr.</p>
           </div>
           <button type="submit" class="btn btn-primary w-full" {% if not sonarr_configured and not radarr_configured %}disabled{% endif %}>{{ icon('zap', 14) }} Lancer la recherche</button>
         </form>
