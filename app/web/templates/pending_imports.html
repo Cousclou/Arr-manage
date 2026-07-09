@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% from "macros.html" import badge %}
+{% block title %}Imports en attente — MediaGuard{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1 class="page-title">Imports en attente</h1>
+    <p class="page-description">Médias bloqués dans la file Sonarr/Radarr nécessitant une action manuelle.</p>
+  </div>
+  <div class="header-actions">
+    <a href="/pending-imports" class="btn btn-outline btn-sm">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Actualiser
+    </a>
+  </div>
+</header>
+
+{% if request.query_params.get('ignored') %}
+<div class="alert alert-success">Média ajouté aux imports ignorés.</div>
+{% endif %}
+
+{% for svc, err in errors.items() %}
+<div class="alert alert-destructive">
+  <strong>{{ svc | capitalize }}</strong> : {{ err }}
+</div>
+{% endfor %}
+
+<div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 1.5rem;">
+  <div class="card stat-card">
+    <p class="stat-label">Total en attente</p>
+    <p class="stat-value">{{ items | length }}</p>
+  </div>
+  <div class="card stat-card">
+    <p class="stat-label">Sonarr</p>
+    <p class="stat-value">{{ sonarr_count }}</p>
+  </div>
+  <div class="card stat-card">
+    <p class="stat-label">Radarr</p>
+    <p class="stat-value">{{ radarr_count }}</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-content p-0">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Média</th>
+          <th>Chemin</th>
+          <th>Erreur</th>
+          <th class="text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td><span class="service-tag service-{{ item.service }}">{{ item.service }}</span></td>
+          <td class="font-medium">{{ item.title }}</td>
+          <td class="text-sm text-muted truncate-cell" title="{{ item.path }}">{{ item.path or '—' }}</td>
+          <td class="text-sm text-muted truncate-cell" title="{{ item.error_message }}">{{ item.error_message }}</td>
+          <td class="text-right">
+            <form method="post" action="/pending-imports/ignore" class="inline-form">
+              <input type="hidden" name="service" value="{{ item.service }}">
+              <input type="hidden" name="external_id" value="{{ item.queue_id }}">
+              <input type="hidden" name="title" value="{{ item.title }}">
+              <input type="hidden" name="path" value="{{ item.path }}">
+              <button type="submit" class="btn btn-outline btn-sm" title="Ne plus alerter (cross-seed)">Ignorer</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="empty-state">
+            {% if errors %}
+            Impossible de récupérer la file d'attente. Vérifiez les connexions dans Configuration.
+            {% else %}
+            Aucun import en attente — tout est OK !
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<p class="text-sm text-muted mt-4">
+  Cette liste est récupérée en direct depuis les files Sonarr/Radarr.
+  Utilisez « Ignorer » pour les médias cross-seed qui ne doivent pas déclencher d'alertes.
+</p>
+{% endblock %}

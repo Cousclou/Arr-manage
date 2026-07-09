@@ -52,6 +52,13 @@
     <p class="stat-value">{{ anime_pending }}</p>
     <p class="stat-hint"><a href="/anime" class="link">Voir le suivi →</a></p>
   </div>
+  <div class="card stat-card">
+    <div class="stat-header">
+      <span class="stat-label">Imports bloqués</span>
+    </div>
+    <p class="stat-value">{% if pending_count %}{{ pending_count }}{% else %}0{% endif %}</p>
+    <p class="stat-hint"><a href="/pending-imports" class="link">Action manuelle →</a></p>
+  </div>
 </section>
 
 <div class="grid-2">

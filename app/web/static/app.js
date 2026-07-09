@@ -1,4 +1,32 @@
-// Settings tabs
+// Settings sidebar navigation
+const activeTabInput = document.getElementById('active-tab-input');
+const settingsNavItems = document.querySelectorAll('.settings-nav-item');
+const settingsPanels = document.querySelectorAll('.settings-panel');
+
+function activateSettingsTab(tabId) {
+  settingsNavItems.forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.tab === tabId);
+  });
+  settingsPanels.forEach((panel) => {
+    panel.classList.toggle('active', panel.id === `tab-${tabId}`);
+  });
+  if (activeTabInput) activeTabInput.value = tabId;
+  history.replaceState(null, '', `?tab=${tabId}`);
+}
+
+settingsNavItems.forEach((btn) => {
+  btn.addEventListener('click', () => activateSettingsTab(btn.dataset.tab));
+});
+
+// Restore tab from URL
+const urlTab = new URLSearchParams(window.location.search).get('tab');
+if (urlTab && document.getElementById(`tab-${urlTab}`)) {
+  activateSettingsTab(urlTab);
+} else if (settingsNavItems.length) {
+  activateSettingsTab(settingsNavItems[0].dataset.tab);
+}
+
+// Legacy settings tabs (if any remain)
 document.querySelectorAll('.tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
     const tabId = btn.dataset.tab;
@@ -20,7 +48,6 @@ function toggleLogRow(btn, logId) {
   btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
 }
 
-// Close other expanded rows when opening one (accordion behavior)
 document.body.addEventListener('click', (e) => {
   const btn = e.target.closest('[hx-get*="/logs/"]');
   if (!btn) return;

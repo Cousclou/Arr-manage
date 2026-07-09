@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% from "macros.html" import badge %}
+{% from "macros.html" import badge, status_dot %}
 {% block title %}Configuration — MediaGuard{% endblock %}
 
 {% block content %}
 <header class="page-header">
   <div>
     <h1 class="page-title">Configuration</h1>
-    <p class="page-description">Modifiez les paramètres sans redémarrer l'application.</p>
+    <p class="page-description">Paramètres organisés par service. Les connexions sont dans chaque onglet dédié.</p>
   </div>
 </header>
 
@@ -15,62 +15,50 @@
 {% endif %}
 
 <form method="post" action="/settings" class="settings-form">
-  <div class="tabs">
-    {% for group in groups %}
-    <button type="button" class="tab-btn {% if loop.first %}active{% endif %}" data-tab="{{ group.id }}">
-      {{ group.icon }} {{ group.title }}
-    </button>
-    {% endfor %}
-  </div>
+  <div class="settings-layout">
+    <nav class="settings-nav">
+      {% for group in groups %}
+      <button type="button" class="settings-nav-item {% if loop.first %}active{% endif %}" data-tab="{{ group.id }}">
+        <span class="settings-nav-icon">{{ group.icon }}</span>
+        {{ group.title }}
+      </button>
+      {% endfor %}
+    </nav>
 
-  {% for group in groups %}
-  <div class="card tab-panel {% if loop.first %}active{% endif %}" id="tab-{{ group.id }}">
-    <div class="card-header">
-      <h2 class="card-title">{{ group.title }}</h2>
-    </div>
-    <div class="card-content">
-      <div class="fields-grid">
-        {% for field in group.fields %}
-        <div class="field-group">
-          <label for="{{ field.key }}">{{ field.label }}</label>
-
-          {% if field.type == 'toggle' %}
-          <label class="toggle">
-            <input type="checkbox" name="{{ field.key }}" id="{{ field.key }}"
-                   {% if settings.get(field.key) == 'true' %}checked{% endif %}>
-            <span class="toggle-slider"></span>
-          </label>
-
-          {% elif field.type == 'select' %}
-          <select name="{{ field.key }}" id="{{ field.key }}" class="input">
-            {% for opt in field.options %}
-            <option value="{{ opt }}" {% if settings.get(field.key) == opt %}selected{% endif %}>{{ opt | upper }}</option>
+    <div class="settings-panels">
+      {% for group in groups %}
+      <div class="settings-panel {% if loop.first %}active{% endif %}" id="tab-{{ group.id }}">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">{{ group.icon }} {{ group.title }}</h2>
+          </div>
+          <div class="card-content">
+            {% for section in group.sections %}
+            <div class="settings-section">
+              <div class="settings-section-header">
+                <h3 class="settings-section-title">{{ section.title }}</h3>
+                {% if section.description %}
+                <p class="settings-section-desc">{{ section.description }}</p>
+                {% endif %}
+              </div>
+              <div class="fields-grid">
+                {% for field in section.fields %}
+                {% include "partials/setting_field.html" %}
+                {% endfor %}
+              </div>
+            </div>
+            {% if not loop.last %}<div class="separator"></div>{% endif %}
             {% endfor %}
-          </select>
-
-          {% elif field.type == 'password' %}
-          <input type="password" name="{{ field.key }}" id="{{ field.key }}" class="input"
-                 value="{{ settings.get(field.key, '') }}" autocomplete="off">
-
-          {% elif field.type == 'number' %}
-          <input type="number" name="{{ field.key }}" id="{{ field.key }}" class="input"
-                 value="{{ settings.get(field.key, '') }}"
-                 {% if field.step %}step="{{ field.step }}"{% endif %}>
-
-          {% else %}
-          <input type="text" name="{{ field.key }}" id="{{ field.key }}" class="input"
-                 value="{{ settings.get(field.key, '') }}"
-                 {% if field.placeholder %}placeholder="{{ field.placeholder }}"{% endif %}>
-          {% endif %}
+          </div>
         </div>
-        {% endfor %}
+      </div>
+      {% endfor %}
+
+      <div class="form-actions">
+        <input type="hidden" name="active_tab" id="active-tab-input" value="">
+        <button type="submit" class="btn btn-primary">Enregistrer la configuration</button>
       </div>
     </div>
-  </div>
-  {% endfor %}
-
-  <div class="form-actions">
-    <button type="submit" class="btn btn-primary">Enregistrer</button>
   </div>
 </form>
 {% endblock %}

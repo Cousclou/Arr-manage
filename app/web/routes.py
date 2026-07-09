@@ -16,7 +16,8 @@ from app.clients.sonarr import SonarrClient
 from app.config import get_settings
 from app.db.models import AnimeWatch, ExcludedMedia, IgnoredImport, MediaUpgradeRule, TaskLog
 from app.db.session import get_db
-from app.services.runtime_config import SETTING_GROUPS, TASK_META, RuntimeConfig
+from app.services.runtime_config import SETTING_GROUPS, TASK_META, RuntimeConfig, iter_setting_fields
+from app.services.pending_imports import fetch_pending_imports
 from app.services.task_logger import get_log_details
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,21 @@ async def _service_counts(db: AsyncSession) -> dict[str, int]:
         select(TaskLog.service, func.count()).group_by(TaskLog.service)
     )
     return dict(result.all())
+
+
+async def _pending_count(db: AsyncSession) -> int:
+    cfg = RuntimeConfig(db)
+    settings = await cfg.all_settings()
+    sonarr = SonarrClient(base_url=settings.get("sonarr_url"), api_key=settings.get("sonarr_api_key"))
+    radarr = RadarrClient(base_url=settings.get("radarr_url"), api_key=settings.get("radarr_api_key"))
+    try:
+        items, _ = await fetch_pending_imports(sonarr, radarr)
+        return len(items)
+    except Exception:
+        return 0
+    finally:
+        await sonarr.close()
+        await radarr.close()
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -76,6 +92,7 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
 
     logs, _ = await _fetch_logs(db, limit=10)
     service_stats = await _service_counts(db)
+    pending_count = await _pending_count(db)
 
     anime_pending = await db.scalar(
         select(func.count()).select_from(AnimeWatch).where(AnimeWatch.resolved.is_(False))
@@ -95,6 +112,7 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
             "tasks": TASK_META,
             "settings": settings,
             "anime_pending": anime_pending or 0,
+            "pending_count": pending_count,
         },
     )
 
@@ -154,17 +172,18 @@ async def save_settings(request: Request, db: AsyncSession = Depends(get_db)):
     form = await request.form()
     updates: dict[str, str] = {}
 
-    for group in SETTING_GROUPS:
-        for field in group["fields"]:
-            key = field["key"]
-            if field["type"] == "toggle":
-                updates[key] = "true" if key in form else "false"
-            elif key in form:
-                updates[key] = str(form[key])
+    for field in iter_setting_fields():
+        key = field["key"]
+        if field["type"] == "toggle":
+            updates[key] = "true" if key in form else "false"
+        elif key in form:
+            updates[key] = str(form[key])
 
     cfg = RuntimeConfig(db)
     await cfg.set_many(updates)
-    return RedirectResponse("/settings?saved=1", status_code=303)
+    tab = form.get("active_tab", "")
+    suffix = f"&tab={tab}" if tab else ""
+    return RedirectResponse(f"/settings?saved=1{suffix}", status_code=303)
 
 
 @router.post("/tasks/{task_name}/run")
@@ -299,3 +318,53 @@ async def anime_page(request: Request, db: AsyncSession = Depends(get_db)):
     return templates.TemplateResponse(
         "anime.html", {"request": request, "page": "anime", "watches": watches}
     )
+
+
+@router.get("/pending-imports", response_class=HTMLResponse)
+async def pending_imports_page(request: Request, db: AsyncSession = Depends(get_db)):
+    cfg = RuntimeConfig(db)
+    settings = await cfg.all_settings()
+
+    sonarr = SonarrClient(base_url=settings.get("sonarr_url"), api_key=settings.get("sonarr_api_key"))
+    radarr = RadarrClient(base_url=settings.get("radarr_url"), api_key=settings.get("radarr_api_key"))
+
+    items, errors = await fetch_pending_imports(sonarr, radarr)
+    await sonarr.close()
+    await radarr.close()
+
+    sonarr_count = sum(1 for i in items if i.service == "sonarr")
+    radarr_count = sum(1 for i in items if i.service == "radarr")
+
+    return templates.TemplateResponse(
+        "pending_imports.html",
+        {
+            "request": request,
+            "page": "pending",
+            "items": items,
+            "errors": errors,
+            "sonarr_count": sonarr_count,
+            "radarr_count": radarr_count,
+            "pending_count": len(items),
+        },
+    )
+
+
+@router.post("/pending-imports/ignore")
+async def ignore_pending_import(
+    service: str = Form(...),
+    external_id: int = Form(...),
+    title: str = Form(...),
+    path: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    db.add(
+        IgnoredImport(
+            service=service,
+            external_id=external_id,
+            title=title,
+            path=path or None,
+            reason="cross-seed / import manuel",
+        )
+    )
+    await db.commit()
+    return RedirectResponse("/pending-imports?ignored=1", status_code=303)

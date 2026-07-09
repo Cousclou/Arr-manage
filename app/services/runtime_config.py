@@ -162,100 +162,182 @@ async def seed_default_settings(db: AsyncSession) -> None:
 
 SETTING_GROUPS: list[dict] = [
     {
-        "id": "connections",
-        "title": "Connexions",
-        "icon": "🔗",
-        "fields": [
-            {"key": "sonarr_url", "label": "URL Sonarr", "type": "text", "placeholder": "http://sonarr:8989"},
-            {"key": "sonarr_api_key", "label": "Clé API Sonarr", "type": "password"},
-            {"key": "radarr_url", "label": "URL Radarr", "type": "text", "placeholder": "http://radarr:7878"},
-            {"key": "radarr_api_key", "label": "Clé API Radarr", "type": "password"},
-            {"key": "pushover_user_key", "label": "Pushover User Key", "type": "password"},
-            {"key": "pushover_api_token", "label": "Pushover API Token", "type": "password"},
-        ],
-    },
-    {
-        "id": "tasks",
-        "title": "Tâches planifiées",
-        "icon": "⏱️",
-        "fields": [
-            {"key": "task_sonarr_monitor_enabled", "label": "Activer monitoring Sonarr", "type": "toggle"},
-            {"key": "sonarr_monitor_interval", "label": "Intervalle Sonarr (sec)", "type": "number"},
-            {"key": "task_radarr_monitor_enabled", "label": "Activer monitoring Radarr", "type": "toggle"},
-            {"key": "radarr_monitor_interval", "label": "Intervalle Radarr (sec)", "type": "number"},
-            {"key": "task_upgrade_check_enabled", "label": "Activer vérification upgrades", "type": "toggle"},
-            {"key": "upgrade_check_interval", "label": "Intervalle upgrades (sec)", "type": "number"},
-            {"key": "task_import_monitor_enabled", "label": "Activer surveillance imports", "type": "toggle"},
-            {"key": "import_check_interval", "label": "Intervalle imports (sec)", "type": "number"},
-            {"key": "task_anime_handler_enabled", "label": "Activer handler anime", "type": "toggle"},
-            {"key": "anime_check_interval", "label": "Intervalle anime (sec)", "type": "number"},
-        ],
-    },
-    {
         "id": "sonarr",
         "title": "Sonarr",
         "icon": "📺",
-        "fields": [
-            {"key": "sonarr_unmonitor_downloaded", "label": "Désactiver suivi épisodes téléchargés", "type": "toggle"},
-            {"key": "sonarr_set_new_episodes_only", "label": "Mode nouveaux épisodes uniquement", "type": "toggle"},
-            {"key": "sonarr_unmonitor_complete_seasons", "label": "Désactiver saisons complètes d'un coup", "type": "toggle"},
-            {"key": "sonarr_skip_continuing", "label": "Ignorer séries en cours de diffusion", "type": "toggle"},
-            {"key": "sonarr_skip_anime", "label": "Ignorer séries anime (handler dédié)", "type": "toggle"},
-            {"key": "sonarr_exclude_tag_ids", "label": "Tags exclus (IDs, virgules)", "type": "text", "placeholder": "1,2,3"},
+        "sections": [
+            {
+                "title": "Connexion",
+                "description": "URL et clé API de votre instance Sonarr.",
+                "fields": [
+                    {"key": "sonarr_url", "label": "URL Sonarr", "type": "text", "placeholder": "http://sonarr:8989"},
+                    {"key": "sonarr_api_key", "label": "Clé API", "type": "password"},
+                ],
+            },
+            {
+                "title": "Planification",
+                "fields": [
+                    {"key": "task_sonarr_monitor_enabled", "label": "Activer le monitoring", "type": "toggle"},
+                    {"key": "sonarr_monitor_interval", "label": "Intervalle (secondes)", "type": "number"},
+                ],
+            },
+            {
+                "title": "Comportement",
+                "fields": [
+                    {"key": "sonarr_unmonitor_downloaded", "label": "Désactiver suivi épisodes téléchargés", "type": "toggle"},
+                    {"key": "sonarr_set_new_episodes_only", "label": "Mode nouveaux épisodes uniquement", "type": "toggle"},
+                    {"key": "sonarr_unmonitor_complete_seasons", "label": "Désactiver saisons complètes", "type": "toggle"},
+                    {"key": "sonarr_skip_continuing", "label": "Ignorer séries en cours de diffusion", "type": "toggle"},
+                    {"key": "sonarr_skip_anime", "label": "Ignorer séries anime (handler dédié)", "type": "toggle"},
+                    {"key": "sonarr_exclude_tag_ids", "label": "Tags exclus (IDs, virgules)", "type": "text", "placeholder": "1,2,3"},
+                ],
+            },
         ],
     },
     {
         "id": "radarr",
         "title": "Radarr",
         "icon": "🎬",
-        "fields": [
-            {"key": "radarr_unmonitor_downloaded", "label": "Désactiver suivi films téléchargés", "type": "toggle"},
-            {"key": "radarr_keep_monitored_if_upgrade", "label": "Garder suivi si upgrade disponible", "type": "toggle"},
-            {"key": "radarr_exclude_tag_ids", "label": "Tags exclus (IDs, virgules)", "type": "text", "placeholder": "4,5"},
+        "sections": [
+            {
+                "title": "Connexion",
+                "description": "URL et clé API de votre instance Radarr.",
+                "fields": [
+                    {"key": "radarr_url", "label": "URL Radarr", "type": "text", "placeholder": "http://radarr:7878"},
+                    {"key": "radarr_api_key", "label": "Clé API", "type": "password"},
+                ],
+            },
+            {
+                "title": "Planification",
+                "fields": [
+                    {"key": "task_radarr_monitor_enabled", "label": "Activer le monitoring", "type": "toggle"},
+                    {"key": "radarr_monitor_interval", "label": "Intervalle (secondes)", "type": "number"},
+                ],
+            },
+            {
+                "title": "Comportement",
+                "fields": [
+                    {"key": "radarr_unmonitor_downloaded", "label": "Désactiver suivi films téléchargés", "type": "toggle"},
+                    {"key": "radarr_keep_monitored_if_upgrade", "label": "Garder suivi si upgrade disponible", "type": "toggle"},
+                    {"key": "radarr_exclude_tag_ids", "label": "Tags exclus (IDs, virgules)", "type": "text", "placeholder": "4,5"},
+                ],
+            },
+        ],
+    },
+    {
+        "id": "notifications",
+        "title": "Notifications",
+        "icon": "🔔",
+        "sections": [
+            {
+                "title": "Pushover",
+                "description": "Configuration des alertes Pushover.",
+                "fields": [
+                    {"key": "pushover_user_key", "label": "User Key", "type": "password"},
+                    {"key": "pushover_api_token", "label": "API Token", "type": "password"},
+                ],
+            },
+            {
+                "title": "Alertes imports",
+                "fields": [
+                    {"key": "import_notify_enabled", "label": "Notifier les échecs d'import", "type": "toggle"},
+                ],
+            },
+            {
+                "title": "Alertes upgrades",
+                "fields": [
+                    {"key": "upgrade_notify_pushover", "label": "Notifier si upgrade disponible", "type": "toggle"},
+                ],
+            },
         ],
     },
     {
         "id": "upgrades",
         "title": "Upgrades",
         "icon": "📦",
-        "fields": [
-            {"key": "upgrade_check_sonarr", "label": "Vérifier upgrades Sonarr", "type": "toggle"},
-            {"key": "upgrade_check_radarr", "label": "Vérifier upgrades Radarr", "type": "toggle"},
-            {"key": "upgrade_size_threshold_gb", "label": "Seuil taille (Go)", "type": "number", "step": "0.1"},
-            {"key": "upgrade_min_savings_percent", "label": "Économie minimale (%)", "type": "number"},
-            {"key": "upgrade_preferred_codec", "label": "Codec préféré", "type": "select", "options": ["av1", "h265", "any"]},
-            {"key": "upgrade_auto_search", "label": "Lancer recherche auto si upgrade trouvé", "type": "toggle"},
-            {"key": "upgrade_notify_pushover", "label": "Notifier Pushover si upgrade trouvé", "type": "toggle"},
-        ],
-    },
-    {
-        "id": "anime",
-        "title": "Anime",
-        "icon": "🎌",
-        "fields": [
-            {"key": "anime_enabled", "label": "Activer gestion anime", "type": "toggle"},
-            {"key": "anime_wait_hours", "label": "Délai avant décision (heures)", "type": "number"},
+        "sections": [
+            {
+                "title": "Planification",
+                "fields": [
+                    {"key": "task_upgrade_check_enabled", "label": "Activer la vérification", "type": "toggle"},
+                    {"key": "upgrade_check_interval", "label": "Intervalle (secondes)", "type": "number"},
+                ],
+            },
+            {
+                "title": "Critères",
+                "fields": [
+                    {"key": "upgrade_check_sonarr", "label": "Vérifier Sonarr", "type": "toggle"},
+                    {"key": "upgrade_check_radarr", "label": "Vérifier Radarr", "type": "toggle"},
+                    {"key": "upgrade_size_threshold_gb", "label": "Seuil taille (Go)", "type": "number", "step": "0.1"},
+                    {"key": "upgrade_min_savings_percent", "label": "Économie minimale (%)", "type": "number"},
+                    {"key": "upgrade_preferred_codec", "label": "Codec préféré", "type": "select", "options": ["av1", "h265", "any"]},
+                    {"key": "upgrade_auto_search", "label": "Recherche auto si upgrade trouvé", "type": "toggle"},
+                ],
+            },
         ],
     },
     {
         "id": "imports",
         "title": "Imports",
         "icon": "📥",
-        "fields": [
-            {"key": "import_notify_enabled", "label": "Notifications Pushover activées", "type": "toggle"},
-            {"key": "import_check_queue", "label": "Surveiller la file d'attente", "type": "toggle"},
-            {"key": "import_check_history", "label": "Surveiller l'historique", "type": "toggle"},
+        "sections": [
+            {
+                "title": "Surveillance",
+                "description": "Détection des imports nécessitant une action manuelle.",
+                "fields": [
+                    {"key": "task_import_monitor_enabled", "label": "Activer la surveillance", "type": "toggle"},
+                    {"key": "import_check_interval", "label": "Intervalle (secondes)", "type": "number"},
+                    {"key": "import_check_queue", "label": "Surveiller la file d'attente", "type": "toggle"},
+                    {"key": "import_check_history", "label": "Surveiller l'historique", "type": "toggle"},
+                ],
+            },
+        ],
+    },
+    {
+        "id": "anime",
+        "title": "Anime",
+        "icon": "🎌",
+        "sections": [
+            {
+                "title": "Planification",
+                "fields": [
+                    {"key": "task_anime_handler_enabled", "label": "Activer le handler anime", "type": "toggle"},
+                    {"key": "anime_check_interval", "label": "Intervalle (secondes)", "type": "number"},
+                ],
+            },
+            {
+                "title": "Comportement",
+                "fields": [
+                    {"key": "anime_enabled", "label": "Activer gestion anime", "type": "toggle"},
+                    {"key": "anime_wait_hours", "label": "Délai avant décision (heures)", "type": "number"},
+                ],
+            },
         ],
     },
     {
         "id": "advanced",
         "title": "Avancé",
         "icon": "⚙️",
-        "fields": [
-            {"key": "dry_run", "label": "Mode simulation (aucune modification)", "type": "toggle"},
+        "sections": [
+            {
+                "title": "Général",
+                "fields": [
+                    {"key": "dry_run", "label": "Mode simulation (aucune modification)", "type": "toggle"},
+                ],
+            },
         ],
     },
 ]
+
+
+def iter_setting_fields() -> list[dict]:
+    """Parcourt tous les champs de configuration."""
+    fields: list[dict] = []
+    for group in SETTING_GROUPS:
+        for section in group.get("sections", []):
+            fields.extend(section.get("fields", []))
+        fields.extend(group.get("fields", []))
+    return fields
 
 TASK_META = [
     {"name": "sonarr_monitor", "label": "Monitoring Sonarr", "enabled_key": "task_sonarr_monitor_enabled"},
