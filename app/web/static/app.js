@@ -102,6 +102,11 @@ document.body.addEventListener('htmx:afterSwap', (event) => {
     initWantedTabs();
     initWantedFilters();
   }
+  const progressLog = event.detail.target?.querySelector?.('.search-progress-log')
+    || document.querySelector('.search-progress-log');
+  if (progressLog) {
+    progressLog.scrollTop = progressLog.scrollHeight;
+  }
 });
 
 function initWantedFilters() {

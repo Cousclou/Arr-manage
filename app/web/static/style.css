@@ -560,6 +560,41 @@ body {
   border-color: hsl(var(--primary) / 0.35);
 }
 
+.wanted-search-progress {
+  border-color: hsl(var(--primary) / 0.25);
+}
+
+.search-progress-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.search-progress-spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid hsl(var(--primary) / 0.25);
+  border-top-color: hsl(var(--primary));
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+.search-progress-row td {
+  opacity: 0.85;
+}
+
+.search-progress-log {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }

@@ -69,8 +69,11 @@ class WantedSearchService:
         series_id: int | None = None,
         movie_id: int | None = None,
         only_service: str | None = None,
+        log_id: int | None = None,
     ) -> dict:
         tlog = TaskLogger(self.db, "wanted_search", service="search")
+        if log_id:
+            await tlog.resume(log_id)
         cfg = self.config
 
         manual = series_id is not None or movie_id is not None or only_service is not None
@@ -180,7 +183,7 @@ class WantedSearchService:
         dry_run: bool,
         tlog: TaskLogger,
     ) -> dict:
-        stats = {"sonarr_series": 0, "sonarr_grabbed": 0, "sonarr_notified": 0}
+        stats = {"sonarr_series": 0, "sonarr_grabbed": 0, "sonarr_notified": 0, "sonarr_found": 0}
         tz = await self.config.get_timezone()
         current_year = now_local(tz).year
 
@@ -208,6 +211,11 @@ class WantedSearchService:
             stats["sonarr_series"] += 1
             is_old = year < current_year
             use_season_first = is_old and season_first
+            tlog.detail(
+                "progress", title, sid,
+                f"Analyse · {len(missing)} épisode(s) manquant(s)"
+                + (" · stratégie season pack" if use_season_first else ""),
+            )
 
             if use_season_first:
                 by_season: dict[int, list[WantedEpisode]] = defaultdict(list)
@@ -226,6 +234,7 @@ class WantedSearchService:
                             stats["sonarr_found"] += f
                         continue
 
+                    tlog.detail("progress", title, sid, f"S{season_num:02d} · Recherche season pack…")
                     releases = await client.search_season_releases(sid, season_num)
                     pack = self._best_release(releases, min_seeders, prefer_season_pack=True, season_only=True)
 
@@ -301,10 +310,18 @@ class WantedSearchService:
         tlog: TaskLogger,
     ) -> tuple[int, int, int]:
         label = f"S{ep.season:02d}E{ep.episode:02d}"
+        tlog.detail("progress", ep.series_title, ep.series_id, f"{label} · Recherche indexeurs…")
         releases = await client.search_releases(ep.episode_id)
         best = self._best_release(releases, min_seeders, prefer_pack, season_only=False)
         if not best:
-            tlog.detail("skipped", ep.series_title, ep.series_id, f"{label} · Aucune release")
+            if releases:
+                sample = releases[0].get("title", "?")[:80]
+                tlog.detail(
+                    "skipped", ep.series_title, ep.series_id,
+                    f"{label} · {len(releases)} release(s) sans candidat exploitable ({sample})",
+                )
+            else:
+                tlog.detail("skipped", ep.series_title, ep.series_id, f"{label} · Aucune release")
             return 0, 0, 0
 
         g, n, f = await self._handle_release(
@@ -356,6 +373,10 @@ class WantedSearchService:
             rel_title = best.get("title", "?")
 
             if not seeders_meet_minimum(best, min_seeders):
+                seeders_label = seeders if seeders is not None else "?"
+                note = f"{rel_title} ({seeders_label} seeders, min {min_seeders})"
+                if best.get("rejections") or best.get("rejected"):
+                    note += " · rejetée par Radarr"
                 if notify_low and seeders is not None:
                     notified = await self._notify_low_seeders(
                         pushover, "radarr", mid, title,
@@ -363,8 +384,10 @@ class WantedSearchService:
                     )
                     if notified:
                         stats["radarr_notified"] += 1
-                        seeders_label = seeders if seeders is not None else "?"
                         tlog.detail("alert", title, mid, f"Peu de seeders: {seeders_label}")
+                tlog.detail("found", title, mid, note)
+                stats["radarr_found"] += 1
+                await asyncio.sleep(0.5)
                 continue
 
             if auto_grab and not dry_run:
@@ -407,6 +430,9 @@ class WantedSearchService:
         seeders_label = seeders if seeders is not None else "?"
 
         if not seeders_meet_minimum(release, min_seeders):
+            note = f"{label} · {rel_title} ({seeders_label} seeders, min {min_seeders})"
+            if release.get("rejections") or release.get("rejected"):
+                note += " · rejetée par Sonarr"
             if notify_low and seeders is not None:
                 ok = await self._notify_low_seeders(
                     pushover, "sonarr", series_id, series_title,
@@ -416,7 +442,8 @@ class WantedSearchService:
                 if ok:
                     notified = 1
                     tlog.detail("alert", series_title, series_id, f"{label} · {seeders} seeders")
-            return grabbed, notified, 0
+            tlog.detail("found", series_title, series_id, note)
+            return grabbed, notified, 1
 
         if auto_grab and not dry_run:
             release["episodeId"] = episode_id
@@ -425,7 +452,9 @@ class WantedSearchService:
             tlog.detail("grab", series_title, series_id, f"{label} · {rel_title}")
             return grabbed, notified, 0
 
-        note = f"{label} · {rel_title} ({seeders_label}s)"
+        note = f"{label} · {rel_title} ({seeders_label} seeders)"
+        if release.get("rejections") or release.get("rejected"):
+            note += " · rejetée par Sonarr"
         if dry_run:
             note += " · simulation"
         elif not auto_grab:
@@ -440,28 +469,31 @@ class WantedSearchService:
         prefer_season_pack: bool,
         season_only: bool,
     ) -> dict | None:
-        candidates = []
-        for rel in releases:
-            if rel.get("rejected"):
-                continue
-            seeders = release_seeders(rel)
-            if seeders == 0:
-                continue
+        accepted: list[tuple[int, dict]] = []
+        fallback: list[tuple[int, dict]] = []
 
+        for rel in releases:
+            seeders = release_seeders(rel)
             is_pack = self._is_season_pack(rel)
             if season_only and not is_pack:
                 continue
 
-            score = seeders if seeders is not None else 1
+            score = seeders if seeders is not None else 0
             if prefer_season_pack and is_pack:
                 score += 10000
-            candidates.append((score, rel))
 
-        if not candidates:
+            entry = (score, rel)
+            if rel.get("rejections") or rel.get("rejected"):
+                fallback.append(entry)
+            else:
+                accepted.append(entry)
+
+        pool = accepted or fallback
+        if not pool:
             return None
 
-        candidates.sort(key=lambda x: x[0], reverse=True)
-        return candidates[0][1]
+        pool.sort(key=lambda x: x[0], reverse=True)
+        return pool[0][1]
 
     def _is_season_pack(self, release: dict) -> bool:
         ep_nums = release.get("episodeNumbers") or []

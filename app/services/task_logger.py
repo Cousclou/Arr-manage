@@ -37,6 +37,9 @@ ACTION_LABELS = {
     "anime_keep": "Reste standard",
     "alert": "Alerte import",
     "error": "Erreur",
+    "progress": "En cours",
+    "found": "Trouvé",
+    "grab": "Téléchargé",
 }
 
 
@@ -50,11 +53,34 @@ class TaskLogger:
         self.stats: dict = {}
         self._details: list[dict] = []
         self._truncated = False
+        self._log_id: int | None = None
+        self._live = False
+
+    async def begin(self, summary: str = "En cours…") -> int:
+        """Crée une entrée de journal en statut running pour suivi en direct."""
+        log = TaskLog(
+            task_name=self.task_name,
+            service=self.service,
+            status="running",
+            message=summary,
+            details_count=0,
+            details_truncated=False,
+        )
+        self.db.add(log)
+        await self.db.flush()
+        self._log_id = log.id
+        self._live = True
+        return log.id
+
+    async def resume(self, log_id: int) -> None:
+        """Reprend un journal existant en mode live."""
+        self._log_id = log_id
+        self._live = True
 
     def set_stats(self, stats: dict) -> None:
         self.stats = stats
 
-    def detail(
+    async def detail(
         self,
         action: str,
         media_title: str,
@@ -64,16 +90,45 @@ class TaskLogger:
         if len(self._details) >= MAX_DETAILS_PER_RUN:
             self._truncated = True
             return
-        self._details.append({
+        entry = {
             "action": action,
             "media_title": media_title[:500],
             "external_id": external_id,
             "detail": (info or "")[:500] or None,
-        })
+        }
+        self._details.append(entry)
+        if self._live and self._log_id:
+            await self._flush_detail(entry)
+
+    async def _flush_detail(self, entry: dict) -> None:
+        self.db.add(TaskLogDetail(
+            log_id=self._log_id,
+            action=entry["action"],
+            media_title=entry["media_title"],
+            external_id=entry["external_id"],
+            detail=entry["detail"],
+        ))
+        log = await self.db.get(TaskLog, self._log_id)
+        if log:
+            log.details_count = len(self._details)
+            log.details_truncated = self._truncated
+        await self.db.commit()
 
     async def finish(self, status: str, summary: str | None = None) -> int:
         if not summary:
             summary = _build_summary(self.task_name, self.stats, self._truncated)
+
+        if self._log_id:
+            log = await self.db.get(TaskLog, self._log_id)
+            if log:
+                log.status = status
+                log.message = summary
+                log.stats_json = json.dumps(self.stats, ensure_ascii=False) if self.stats else None
+                log.details_count = len(self._details)
+                log.details_truncated = self._truncated
+                await self.db.commit()
+                await _cleanup_old_logs(self.db)
+                return log.id
 
         log = TaskLog(
             task_name=self.task_name,

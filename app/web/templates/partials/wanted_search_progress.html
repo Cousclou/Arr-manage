@@ -1,0 +1,49 @@
+{% from "macros.html" import action_badge %}
+{% from "macros/icons.html" import icon %}
+
+<div id="wanted-search-progress-{{ log_id }}"
+     class="card wanted-search-progress"
+     {% if running %}
+     hx-get="/wanted/search/progress/{{ log_id }}?service={{ service }}"
+     hx-trigger="every 1s"
+     hx-swap="outerHTML"
+     {% endif %}>
+  <div class="card-header flex-between">
+    <div>
+      <h2 class="card-title">
+        {% if running %}{{ icon('search', 18) }}{% else %}{{ icon('zap', 18) }}{% endif %}
+        {% if running %}Recherche en cours{% else %}Recherche terminée{% endif %}
+      </h2>
+      <p class="card-description">{{ media_title }} · {{ 'Sonarr' if service == 'sonarr' else 'Radarr' }}</p>
+    </div>
+    {% if not running %}
+    <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('wanted-search-result').innerHTML=''">Fermer</button>
+    {% endif %}
+  </div>
+  <div class="card-content">
+    {% if running %}
+    <div class="search-progress-status">
+      <span class="search-progress-spinner"></span>
+      <span>{{ log.message or 'Recherche sur les indexeurs…' }}</span>
+    </div>
+    {% endif %}
+
+    {% if details %}
+    <div class="search-progress-log mt-4">
+      <table class="table table-compact">
+        <thead><tr><th>Action</th><th>Info</th></tr></thead>
+        <tbody>
+          {% for d in details %}
+          <tr class="{% if d.action == 'progress' %}search-progress-row{% endif %}">
+            <td>{{ action_badge(d.action) }}</td>
+            <td class="text-sm text-muted">{{ d.detail or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% elif running %}
+    <p class="text-sm text-muted mt-4">Connexion aux indexeurs…</p>
+    {% endif %}
+  </div>
+</div>

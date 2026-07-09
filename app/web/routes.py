@@ -1,5 +1,7 @@
 """Routes de l'interface web."""
 
+import asyncio
+import json
 import logging
 
 from arq import create_pool
@@ -15,10 +17,10 @@ from app.clients.radarr import RadarrClient
 from app.clients.sonarr import SonarrClient
 from app.config import get_settings
 from app.db.models import AnimeWatch, ExcludedMedia, IgnoredImport, MediaUpgradeRule, TaskLog
-from app.db.session import get_db
+from app.db.session import async_session, get_db
 from app.services.runtime_config import SETTING_GROUPS, TASK_META, RuntimeConfig, iter_setting_fields
 from app.services.pending_imports import fetch_pending_imports
-from app.services.task_logger import get_log_details
+from app.services.task_logger import TaskLogger, get_log_details
 from app.services.wanted_search import WantedSearchService, list_wanted_preview
 from app.utils.timezone import format_local
 
@@ -441,6 +443,7 @@ async def wanted_search_manual(
         if not client.configured:
             await client.close()
             return _wanted_search_error(request, "sonarr", service)
+        media_title = await _sonarr_series_title(settings, series_id)
         await client.close()
     elif service == "radarr":
         if not movie_id:
@@ -449,39 +452,102 @@ async def wanted_search_manual(
         if not client.configured:
             await client.close()
             return _wanted_search_error(request, "radarr", service)
+        media_title = await _radarr_movie_title(settings, movie_id)
         await client.close()
     else:
         return _wanted_search_error(request, "service", service)
 
-    service_obj = WantedSearchService(db)
-    if service == "sonarr":
-        result = await service_obj.run(series_id=series_id)
-        media_title = await _sonarr_series_title(settings, series_id)
-    else:
-        result = await service_obj.run(movie_id=movie_id)
-        media_title = await _radarr_movie_title(settings, movie_id)
+    tlog = TaskLogger(db, "wanted_search", service="search")
+    log_id = await tlog.begin(f"Recherche {media_title}…")
+    asyncio.create_task(_execute_wanted_search(log_id, service, series_id, movie_id))
 
-    log = None
-    details: list = []
-    if result.get("log_id"):
-        log, details = await get_log_details(db, result["log_id"])
+    return templates.TemplateResponse(
+        "partials/wanted_search_progress.html",
+        {
+            "request": request,
+            "log_id": log_id,
+            "service": service,
+            "media_title": media_title,
+            "running": True,
+            "log": await db.get(TaskLog, log_id),
+            "details": [],
+            "grouped_details": [],
+            "result": {},
+            "settings": settings,
+        },
+    )
 
-    grouped = _group_search_details(details)
+
+@router.get("/wanted/search/progress/{log_id}", response_class=HTMLResponse)
+async def wanted_search_progress(
+    log_id: int,
+    request: Request,
+    service: str = "sonarr",
+    db: AsyncSession = Depends(get_db),
+):
+    cfg = RuntimeConfig(db)
+    settings = await cfg.all_settings()
+    log, details = await get_log_details(db, log_id)
+    if not log:
+        return HTMLResponse("<p class='empty-state'>Recherche introuvable.</p>", status_code=404)
+
+    result: dict = {}
+    if log.stats_json:
+        try:
+            result = json.loads(log.stats_json)
+        except json.JSONDecodeError:
+            result = {}
+
+    service = request.query_params.get("service", service)
+    media_title = log.message.replace("Recherche ", "").rstrip("…") if log.message else "—"
+    if details:
+        for d in details:
+            if d.action != "progress":
+                media_title = d.media_title
+                break
+
+    grouped = _group_search_details([d for d in details if d.action != "progress"])
+    running = log.status == "running"
+
     ctx = {
         "request": request,
+        "log_id": log_id,
         "service": service,
         "media_title": media_title,
-        "result": result,
+        "running": running,
         "log": log,
         "details": details,
         "grouped_details": grouped,
+        "result": result,
         "settings": settings,
     }
 
-    if request.headers.get("HX-Request"):
-        return templates.TemplateResponse("partials/wanted_search_result.html", ctx)
+    if running:
+        return templates.TemplateResponse("partials/wanted_search_progress.html", ctx)
 
-    return templates.TemplateResponse("wanted_search_result.html", ctx)
+    return templates.TemplateResponse("partials/wanted_search_result.html", ctx)
+
+
+async def _execute_wanted_search(
+    log_id: int,
+    service: str,
+    series_id: int | None,
+    movie_id: int | None,
+) -> None:
+    async with async_session() as db:
+        try:
+            svc = WantedSearchService(db)
+            if service == "sonarr":
+                await svc.run(series_id=series_id, log_id=log_id)
+            else:
+                await svc.run(movie_id=movie_id, log_id=log_id)
+        except Exception:
+            logger.exception("Erreur recherche wanted manuelle")
+            tlog = TaskLogger(db, "wanted_search", service="search")
+            await tlog.resume(log_id)
+            tlog.detail("error", "Recherche", info="Erreur inattendue")
+            tlog.set_stats({"errors": 1})
+            await tlog.finish("error", "Erreur lors de la recherche")
 
 
 def _wanted_search_error(request: Request, code: str, tab: str) -> RedirectResponse:
