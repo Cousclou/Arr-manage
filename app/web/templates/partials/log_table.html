@@ -12,7 +12,7 @@
   <tbody>
     {% for log in logs %}
     <tr class="log-row" data-log-id="{{ log.id }}">
-      <td class="text-muted text-sm nowrap">{{ log.created_at.strftime('%d/%m %H:%M') if log.created_at else '-' }}</td>
+      <td class="text-muted text-sm nowrap">{{ log.created_at | local_dt('%d/%m %H:%M') }}</td>
       <td><span class="service-tag service-{{ log.service }}">{{ log.service }}</span></td>
       <td>{{ badge(log.status, 'success' if log.status == 'success' else ('destructive' if log.status == 'error' else 'secondary')) }}</td>
       <td class="text-sm">{{ log.message or '—' }}</td>

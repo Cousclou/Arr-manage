@@ -2,12 +2,14 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router as api_router
-from app.db.session import init_db
+from app.db.session import async_session, init_db
+from app.services.runtime_config import RuntimeConfig
+from app.utils.timezone import set_request_timezone
 from app.web.routes import router as web_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -33,6 +35,18 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.include_router(web_router)
 app.include_router(api_router, prefix="/api/v1")
+
+
+@app.middleware("http")
+async def timezone_middleware(request: Request, call_next):
+    if not request.url.path.startswith("/static"):
+        try:
+            async with async_session() as db:
+                cfg = RuntimeConfig(db)
+                set_request_timezone(await cfg.get_timezone())
+        except Exception:
+            logger.exception("Impossible de charger le fuseau horaire")
+    return await call_next(request)
 
 
 @app.get("/favicon.ico", include_in_schema=False)

@@ -7,7 +7,6 @@ import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +17,7 @@ from app.clients.sonarr import SonarrClient
 from app.db.models import SearchAlert
 from app.services.runtime_config import RuntimeConfig
 from app.services.task_logger import TaskLogger
+from app.utils.timezone import now_local
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,21 @@ SEASON_PACK_RE = re.compile(
     r"\b(S\d{2}(?!E\d)|Season\s*\d+|Complete|Integral|Saison\s*\d+|Season Pack)\b",
     re.IGNORECASE,
 )
+
+
+def release_seeders(release: dict) -> int | None:
+    """Retourne le nombre de seeders ou None si inconnu (-1 / absent)."""
+    seeders = release.get("seeders")
+    if seeders is None or seeders < 0:
+        return None
+    return int(seeders)
+
+
+def seeders_meet_minimum(release: dict, min_seeders: int) -> bool:
+    seeders = release_seeders(release)
+    if seeders is None:
+        return True
+    return seeders >= min_seeders
 
 
 @dataclass
@@ -155,7 +170,8 @@ class WantedSearchService:
         tlog: TaskLogger,
     ) -> dict:
         stats = {"sonarr_series": 0, "sonarr_grabbed": 0, "sonarr_notified": 0}
-        current_year = datetime.now(timezone.utc).year
+        tz = await self.config.get_timezone()
+        current_year = now_local(tz).year
 
         if series_id:
             series_list = [await client.get_series_by_id(series_id)]
@@ -197,14 +213,11 @@ class WantedSearchService:
                             stats["sonarr_notified"] += n
                         continue
 
-                    await client.trigger_season_search(sid, season_num)
-                    await asyncio.sleep(1)
-
-                    first_ep = season_eps[0]
-                    releases = await client.search_releases(first_ep.episode_id)
+                    releases = await client.search_season_releases(sid, season_num)
                     pack = self._best_release(releases, min_seeders, prefer_season_pack=True, season_only=True)
 
                     if pack:
+                        first_ep = season_eps[0]
                         g, n = await self._handle_release(
                             client, pushover, title, first_ep.episode_id, pack,
                             min_seeders, notify_low, auto_grab, dry_run, tlog,
@@ -232,7 +245,7 @@ class WantedSearchService:
                     pack_done = False
                     if prefer_pack and season_eps:
                         first = season_eps[0]
-                        releases = await client.search_releases(first.episode_id)
+                        releases = await client.search_season_releases(sid, first.season)
                         pack = self._best_release(releases, min_seeders, prefer_season_pack=True, season_only=True)
                         if pack:
                             g, n = await self._handle_release(
@@ -270,14 +283,13 @@ class WantedSearchService:
         dry_run: bool,
         tlog: TaskLogger,
     ) -> tuple[int, int]:
-        await client.trigger_episode_search([ep.episode_id])
-        await asyncio.sleep(0.8)
+        label = f"S{ep.season:02d}E{ep.episode:02d}"
         releases = await client.search_releases(ep.episode_id)
         best = self._best_release(releases, min_seeders, prefer_pack, season_only=False)
         if not best:
+            tlog.detail("skipped", ep.series_title, ep.series_id, f"{label} · Aucune release")
             return 0, 0
 
-        label = f"S{ep.season:02d}E{ep.episode:02d}"
         return await self._handle_release(
             client, pushover, ep.series_title, ep.episode_id, best,
             min_seeders, notify_low, auto_grab, dry_run, tlog, label,
@@ -295,7 +307,8 @@ class WantedSearchService:
         tlog: TaskLogger,
     ) -> dict:
         stats = {"radarr_movies": 0, "radarr_grabbed": 0, "radarr_notified": 0}
-        current_year = datetime.now(timezone.utc).year
+        tz = await self.config.get_timezone()
+        current_year = now_local(tz).year
 
         if movie_id:
             movies = [await client.get_movie(movie_id)]
@@ -311,29 +324,29 @@ class WantedSearchService:
             year = movie.get("year") or current_year
             stats["radarr_movies"] += 1
 
-            await client.trigger_movie_search([mid])
-            await asyncio.sleep(1)
-
             releases = await client.search_releases(mid)
             best = self._best_release(releases, min_seeders, prefer_season_pack=False, season_only=False)
 
             if not best:
                 if year < current_year:
                     tlog.detail("skipped", title, mid, "Aucune release trouvée (film ancien)")
+                else:
+                    tlog.detail("skipped", title, mid, "Aucune release trouvée")
                 continue
 
-            seeders = best.get("seeders") or 0
+            seeders = release_seeders(best)
             rel_title = best.get("title", "?")
 
-            if seeders < min_seeders:
-                if notify_low:
+            if not seeders_meet_minimum(best, min_seeders):
+                if notify_low and seeders is not None:
                     notified = await self._notify_low_seeders(
                         pushover, "radarr", mid, title,
                         f"{rel_title} ({seeders} seeders, min {min_seeders})",
                     )
                     if notified:
                         stats["radarr_notified"] += 1
-                        tlog.detail("alert", title, mid, f"Peu de seeders: {seeders}")
+                        seeders_label = seeders if seeders is not None else "?"
+                        tlog.detail("alert", title, mid, f"Peu de seeders: {seeders_label}")
                 continue
 
             if auto_grab and not dry_run:
@@ -342,7 +355,8 @@ class WantedSearchService:
                 stats["radarr_grabbed"] += 1
                 tlog.detail("grab", title, mid, rel_title)
             else:
-                tlog.detail("found", title, mid, f"{rel_title} ({seeders} seeders)")
+                seeders_label = seeders if seeders is not None else "?"
+                tlog.detail("found", title, mid, f"{rel_title} ({seeders_label} seeders)")
 
             await asyncio.sleep(0.5)
 
@@ -363,12 +377,13 @@ class WantedSearchService:
         label: str,
     ) -> tuple[int, int]:
         grabbed = notified = 0
-        seeders = release.get("seeders") or 0
+        seeders = release_seeders(release)
         rel_title = release.get("title", "?")
         series_id = release.get("seriesId") or 0
+        seeders_label = seeders if seeders is not None else "?"
 
-        if seeders < min_seeders:
-            if notify_low:
+        if not seeders_meet_minimum(release, min_seeders):
+            if notify_low and seeders is not None:
                 ok = await self._notify_low_seeders(
                     pushover, "sonarr", series_id, series_title,
                     f"{label}: {rel_title} ({seeders} seeders, min {min_seeders})",
@@ -385,7 +400,7 @@ class WantedSearchService:
             grabbed = 1
             tlog.detail("grab", series_title, series_id, f"{label} · {rel_title}")
         else:
-            tlog.detail("found", series_title, series_id, f"{label} · {rel_title} ({seeders}s)")
+            tlog.detail("found", series_title, series_id, f"{label} · {rel_title} ({seeders_label}s)")
 
         return grabbed, notified
 
@@ -400,15 +415,15 @@ class WantedSearchService:
         for rel in releases:
             if rel.get("rejected"):
                 continue
-            seeders = rel.get("seeders") or 0
-            if seeders <= 0:
+            seeders = release_seeders(rel)
+            if seeders == 0:
                 continue
 
             is_pack = self._is_season_pack(rel)
             if season_only and not is_pack:
                 continue
 
-            score = seeders
+            score = seeders if seeders is not None else 1
             if prefer_season_pack and is_pack:
                 score += 10000
             candidates.append((score, rel))

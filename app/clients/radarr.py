@@ -23,7 +23,7 @@ class RadarrClient:
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
                 headers={"X-Api-Key": self.api_key},
-                timeout=60.0,
+                timeout=120.0,
             )
         return self._client
 

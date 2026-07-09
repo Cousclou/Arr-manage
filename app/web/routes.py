@@ -21,10 +21,12 @@ from app.services.media_resolver import MediaResolveError, resolve_radarr_movie,
 from app.services.pending_imports import fetch_pending_imports
 from app.services.task_logger import get_log_details
 from app.services.wanted_search import list_wanted_preview
+from app.utils.timezone import format_local
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 templates = Jinja2Templates(directory="app/web/templates")
+templates.env.filters["local_dt"] = format_local
 
 LOG_SERVICES = ["sonarr", "radarr", "upgrade", "import", "anime", "search"]
 LOG_PAGE_SIZE = 25
@@ -444,6 +446,9 @@ async def wanted_search_manual(
             job_kwargs: dict = {"series_id": series_id}
         except MediaResolveError as exc:
             return RedirectResponse(f"/wanted?error={exc.code}", status_code=303)
+        except Exception as exc:
+            logger.exception("Erreur résolution Sonarr")
+            return RedirectResponse("/wanted?error=search", status_code=303)
         finally:
             await client.close()
     elif service == "radarr":
@@ -455,6 +460,9 @@ async def wanted_search_manual(
             job_kwargs = {"movie_id": movie_id}
         except MediaResolveError as exc:
             return RedirectResponse(f"/wanted?error={exc.code}", status_code=303)
+        except Exception as exc:
+            logger.exception("Erreur résolution Radarr")
+            return RedirectResponse("/wanted?error=search", status_code=303)
         finally:
             await client.close()
     else:

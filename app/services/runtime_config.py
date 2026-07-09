@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
+from app.utils.timezone import normalize_timezone_name, resolve_timezone
 from app.db.models import AppSetting
 
 # Clés modifiables via l'interface web (valeurs stockées en texte)
@@ -57,6 +58,7 @@ SETTING_DEFAULTS: dict[str, str] = {
     "import_check_history": "true",
     # Général
     "dry_run": "false",
+    "app_timezone": "Europe/Paris",
     # Recherche wanted
     "task_wanted_search_enabled": "false",
     "wanted_search_interval": "1800",
@@ -144,10 +146,15 @@ class RuntimeConfig:
             return []
         return [int(x.strip()) for x in raw.split(",") if x.strip()]
 
+    async def get_timezone(self):
+        return resolve_timezone(await self.get("app_timezone"))
+
     async def set_many(self, updates: dict[str, str]) -> None:
         for key, value in updates.items():
             if key not in SETTING_DEFAULTS:
                 continue
+            if key == "app_timezone":
+                value = normalize_timezone_name(value)
             result = await self.db.execute(select(AppSetting).where(AppSetting.key == key))
             existing = result.scalar_one_or_none()
             if existing:
@@ -371,6 +378,12 @@ SETTING_GROUPS: list[dict] = [
                 "title": "Général",
                 "fields": [
                     {"key": "dry_run", "label": "Mode simulation (aucune modification)", "type": "toggle"},
+                    {
+                        "key": "app_timezone",
+                        "label": "Fuseau horaire",
+                        "type": "text",
+                        "placeholder": "Europe/Paris",
+                    },
                 ],
             },
         ],

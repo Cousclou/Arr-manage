@@ -23,7 +23,7 @@ class SonarrClient:
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
                 headers={"X-Api-Key": self.api_key},
-                timeout=60.0,
+                timeout=120.0,
             )
         return self._client
 
@@ -78,6 +78,9 @@ class SonarrClient:
 
     async def search_releases(self, episode_id: int) -> list[dict]:
         return await self.get("/release", episodeId=episode_id)
+
+    async def search_season_releases(self, series_id: int, season_number: int) -> list[dict]:
+        return await self.get("/release", seriesId=series_id, seasonNumber=season_number)
 
     async def get_wanted_missing(
         self,

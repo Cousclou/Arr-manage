@@ -29,8 +29,14 @@
     <div class="alert alert-warning">Aucun média trouvé dans la bibliothèque pour cette recherche.</div>
     {% elif request.query_params.get('error') == 'ambiguous' %}
     <div class="alert alert-warning">Plusieurs résultats correspondent — précisez le titre ou utilisez un ID externe.</div>
-    {% elif request.query_params.get('error') == 'invalid' %}
-    <div class="alert alert-warning">Valeur de recherche invalide.</div>
+    {% elif request.query_params.get('error') in ['search', 'invalid'] %}
+    <div class="alert alert-warning">
+      {% if request.query_params.get('error') == 'search' %}
+      Erreur de connexion au service — vérifiez l'URL et la clé API.
+      {% else %}
+      Valeur de recherche invalide.
+      {% endif %}
+    </div>
     {% elif request.query_params.get('error') == 'empty' %}
     <div class="alert alert-warning">Indiquez un identifiant ou un titre.</div>
     {% endif %}

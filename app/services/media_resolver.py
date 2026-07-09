@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import httpx
+
 from app.clients.radarr import RadarrClient
 from app.clients.sonarr import SonarrClient
 
@@ -15,6 +17,37 @@ class MediaResolveError(Exception):
 
 def _normalize_title(value: str) -> str:
     return " ".join(value.strip().lower().split())
+
+
+def _series_titles(series: dict) -> list[str]:
+    titles: list[str] = []
+    for key in ("title", "sortTitle"):
+        if series.get(key):
+            titles.append(_normalize_title(series[key]))
+    for alt in series.get("alternateTitles") or []:
+        if isinstance(alt, dict) and alt.get("title"):
+            titles.append(_normalize_title(alt["title"]))
+    return list(dict.fromkeys(titles))
+
+
+def _movie_titles(movie: dict) -> list[str]:
+    titles: list[str] = []
+    for key in ("title", "sortTitle"):
+        if movie.get(key):
+            titles.append(_normalize_title(movie[key]))
+    for alt in movie.get("alternateTitles") or []:
+        if isinstance(alt, dict) and alt.get("title"):
+            titles.append(_normalize_title(alt["title"]))
+    return list(dict.fromkeys(titles))
+
+
+def _match_external_id(value: object, query: int) -> bool:
+    if value is None:
+        return False
+    try:
+        return int(value) == query
+    except (TypeError, ValueError):
+        return False
 
 
 async def resolve_sonarr_series(
@@ -33,7 +66,12 @@ async def resolve_sonarr_series(
             series_id = int(raw)
         except ValueError as exc:
             raise MediaResolveError("invalid", "ID Sonarr invalide") from exc
-        series = await client.get_series_by_id(series_id)
+        try:
+            series = await client.get_series_by_id(series_id)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise MediaResolveError("notfound", f"Aucune série avec l'ID {series_id}") from exc
+            raise MediaResolveError("search", f"Erreur Sonarr : {exc}") from exc
         return series["id"], series.get("title", "?")
 
     series_list = await client.get_series()
@@ -44,7 +82,7 @@ async def resolve_sonarr_series(
         except ValueError as exc:
             raise MediaResolveError("invalid", "ID TVDB invalide") from exc
         for series in series_list:
-            if series.get("tvdbId") == tvdb_id:
+            if _match_external_id(series.get("tvdbId"), tvdb_id):
                 return series["id"], series.get("title", "?")
         raise MediaResolveError("notfound", f"Aucune série avec TVDB {tvdb_id}")
 
@@ -54,7 +92,7 @@ async def resolve_sonarr_series(
         except ValueError as exc:
             raise MediaResolveError("invalid", "ID TMDb invalide") from exc
         for series in series_list:
-            if series.get("tmdbId") == tmdb_id:
+            if _match_external_id(series.get("tmdbId"), tmdb_id):
                 return series["id"], series.get("title", "?")
         raise MediaResolveError("notfound", f"Aucune série avec TMDb {tmdb_id}")
 
@@ -62,7 +100,7 @@ async def resolve_sonarr_series(
         needle = _normalize_title(raw)
         exact = [
             s for s in series_list
-            if _normalize_title(s.get("title") or "") == needle
+            if any(needle == title for title in _series_titles(s))
         ]
         if len(exact) == 1:
             return exact[0]["id"], exact[0].get("title", "?")
@@ -72,7 +110,7 @@ async def resolve_sonarr_series(
 
         partial = [
             s for s in series_list
-            if needle in _normalize_title(s.get("title") or "")
+            if any(needle in title for title in _series_titles(s))
         ]
         if len(partial) == 1:
             return partial[0]["id"], partial[0].get("title", "?")
@@ -100,7 +138,12 @@ async def resolve_radarr_movie(
             movie_id = int(raw)
         except ValueError as exc:
             raise MediaResolveError("invalid", "ID Radarr invalide") from exc
-        movie = await client.get_movie(movie_id)
+        try:
+            movie = await client.get_movie(movie_id)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise MediaResolveError("notfound", f"Aucun film avec l'ID {movie_id}") from exc
+            raise MediaResolveError("search", f"Erreur Radarr : {exc}") from exc
         return movie["id"], movie.get("title", "?")
 
     movies = await client.get_movies()
@@ -111,7 +154,7 @@ async def resolve_radarr_movie(
         except ValueError as exc:
             raise MediaResolveError("invalid", "ID TMDb invalide") from exc
         for movie in movies:
-            if movie.get("tmdbId") == tmdb_id:
+            if _match_external_id(movie.get("tmdbId"), tmdb_id):
                 return movie["id"], movie.get("title", "?")
         raise MediaResolveError("notfound", f"Aucun film avec TMDb {tmdb_id}")
 
@@ -121,7 +164,7 @@ async def resolve_radarr_movie(
         except ValueError as exc:
             raise MediaResolveError("invalid", "ID TVDB invalide") from exc
         for movie in movies:
-            if movie.get("tvdbId") == tvdb_id:
+            if _match_external_id(movie.get("tvdbId"), tvdb_id):
                 return movie["id"], movie.get("title", "?")
         raise MediaResolveError("notfound", f"Aucun film avec TVDB {tvdb_id}")
 
@@ -129,7 +172,7 @@ async def resolve_radarr_movie(
         needle = _normalize_title(raw)
         exact = [
             m for m in movies
-            if _normalize_title(m.get("title") or "") == needle
+            if any(needle == title for title in _movie_titles(m))
         ]
         if len(exact) == 1:
             return exact[0]["id"], exact[0].get("title", "?")
@@ -139,7 +182,7 @@ async def resolve_radarr_movie(
 
         partial = [
             m for m in movies
-            if needle in _normalize_title(m.get("title") or "")
+            if any(needle in title for title in _movie_titles(m))
         ]
         if len(partial) == 1:
             return partial[0]["id"], partial[0].get("title", "?")
