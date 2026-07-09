@@ -68,11 +68,13 @@ class WantedSearchService:
         self,
         series_id: int | None = None,
         movie_id: int | None = None,
+        only_service: str | None = None,
     ) -> dict:
         tlog = TaskLogger(self.db, "wanted_search", service="search")
         cfg = self.config
 
-        if not await cfg.get_bool("task_wanted_search_enabled") and series_id is None and movie_id is None:
+        manual = series_id is not None or movie_id is not None or only_service is not None
+        if not await cfg.get_bool("task_wanted_search_enabled") and not manual:
             await tlog.finish("skipped", "Tâche désactivée")
             return {"skipped": True}
 
@@ -80,9 +82,11 @@ class WantedSearchService:
             "sonarr_series": 0,
             "sonarr_grabbed": 0,
             "sonarr_notified": 0,
+            "sonarr_found": 0,
             "radarr_movies": 0,
             "radarr_grabbed": 0,
             "radarr_notified": 0,
+            "radarr_found": 0,
             "errors": 0,
             "dry_run": await cfg.get_bool("dry_run"),
         }
@@ -107,12 +111,19 @@ class WantedSearchService:
         season_first = await cfg.get_bool("search_old_series_season_first")
         dry_run = stats["dry_run"]
 
-        sonarr_should = bool(series_id) or (
-            await cfg.get_bool("search_sonarr_enabled") and sonarr.configured
-        )
-        radarr_should = bool(movie_id) or (
-            await cfg.get_bool("search_radarr_enabled") and radarr.configured
-        )
+        if only_service == "sonarr":
+            sonarr_should = sonarr.configured
+            radarr_should = False
+        elif only_service == "radarr":
+            sonarr_should = False
+            radarr_should = radarr.configured
+        else:
+            sonarr_should = bool(series_id) or (
+                await cfg.get_bool("search_sonarr_enabled") and sonarr.configured
+            )
+            radarr_should = bool(movie_id) or (
+                await cfg.get_bool("search_radarr_enabled") and radarr.configured
+            )
 
         if series_id is None and movie_id is None and not sonarr_should and not radarr_should:
             await tlog.finish("skipped", "Aucun service activé ou configuré")
@@ -205,12 +216,13 @@ class WantedSearchService:
                 for season_num, season_eps in sorted(by_season.items()):
                     if season_num == 0:
                         for ep in season_eps:
-                            g, n = await self._search_episode(
+                            g, n, f = await self._search_episode(
                                 client, pushover, series, ep, min_seeders, notify_low,
                                 auto_grab, prefer_pack, dry_run, tlog,
                             )
                             stats["sonarr_grabbed"] += g
                             stats["sonarr_notified"] += n
+                            stats["sonarr_found"] += f
                         continue
 
                     releases = await client.search_season_releases(sid, season_num)
@@ -218,23 +230,25 @@ class WantedSearchService:
 
                     if pack:
                         first_ep = season_eps[0]
-                        g, n = await self._handle_release(
+                        g, n, f = await self._handle_release(
                             client, pushover, title, first_ep.episode_id, pack,
                             min_seeders, notify_low, auto_grab, dry_run, tlog,
                             f"S{season_num:02d} season pack",
                         )
                         stats["sonarr_grabbed"] += g
                         stats["sonarr_notified"] += n
+                        stats["sonarr_found"] += f
                         if g:
                             continue
 
                     for ep in season_eps:
-                        g, n = await self._search_episode(
+                        g, n, f = await self._search_episode(
                             client, pushover, series, ep, min_seeders, notify_low,
                             auto_grab, prefer_pack, dry_run, tlog,
                         )
                         stats["sonarr_grabbed"] += g
                         stats["sonarr_notified"] += n
+                        stats["sonarr_found"] += f
                         await asyncio.sleep(0.5)
             else:
                 by_season_eps: dict[int, list[WantedEpisode]] = defaultdict(list)
@@ -248,24 +262,26 @@ class WantedSearchService:
                         releases = await client.search_season_releases(sid, first.season)
                         pack = self._best_release(releases, min_seeders, prefer_season_pack=True, season_only=True)
                         if pack:
-                            g, n = await self._handle_release(
+                            g, n, f = await self._handle_release(
                                 client, pushover, title, first.episode_id, pack,
                                 min_seeders, notify_low, auto_grab, dry_run, tlog,
                                 f"S{first.season:02d}E{first.episode:02d} via pack",
                             )
                             stats["sonarr_grabbed"] += g
                             stats["sonarr_notified"] += n
+                            stats["sonarr_found"] += f
                             if g:
                                 pack_done = True
 
                     if not pack_done:
                         for ep in season_eps:
-                            g, n = await self._search_episode(
+                            g, n, f = await self._search_episode(
                                 client, pushover, series, ep, min_seeders, notify_low,
                                 auto_grab, prefer_pack, dry_run, tlog,
                             )
                             stats["sonarr_grabbed"] += g
                             stats["sonarr_notified"] += n
+                            stats["sonarr_found"] += f
                             await asyncio.sleep(0.5)
 
         return stats
@@ -282,18 +298,19 @@ class WantedSearchService:
         prefer_pack: bool,
         dry_run: bool,
         tlog: TaskLogger,
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, int]:
         label = f"S{ep.season:02d}E{ep.episode:02d}"
         releases = await client.search_releases(ep.episode_id)
         best = self._best_release(releases, min_seeders, prefer_pack, season_only=False)
         if not best:
             tlog.detail("skipped", ep.series_title, ep.series_id, f"{label} · Aucune release")
-            return 0, 0
+            return 0, 0, 0
 
-        return await self._handle_release(
+        g, n, f = await self._handle_release(
             client, pushover, ep.series_title, ep.episode_id, best,
             min_seeders, notify_low, auto_grab, dry_run, tlog, label,
         )
+        return g, n, f
 
     async def _search_radarr(
         self,
@@ -356,7 +373,13 @@ class WantedSearchService:
                 tlog.detail("grab", title, mid, rel_title)
             else:
                 seeders_label = seeders if seeders is not None else "?"
-                tlog.detail("found", title, mid, f"{rel_title} ({seeders_label} seeders)")
+                note = f"{rel_title} ({seeders_label} seeders)"
+                if dry_run:
+                    note += " · simulation"
+                elif not auto_grab:
+                    note += " · auto-grab désactivé"
+                tlog.detail("found", title, mid, note)
+                stats["radarr_found"] += 1
 
             await asyncio.sleep(0.5)
 
@@ -375,7 +398,7 @@ class WantedSearchService:
         dry_run: bool,
         tlog: TaskLogger,
         label: str,
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, int]:
         grabbed = notified = 0
         seeders = release_seeders(release)
         rel_title = release.get("title", "?")
@@ -392,17 +415,22 @@ class WantedSearchService:
                 if ok:
                     notified = 1
                     tlog.detail("alert", series_title, series_id, f"{label} · {seeders} seeders")
-            return grabbed, notified
+            return grabbed, notified, 0
 
         if auto_grab and not dry_run:
             release["episodeId"] = episode_id
             await client.grab_release(release)
             grabbed = 1
             tlog.detail("grab", series_title, series_id, f"{label} · {rel_title}")
-        else:
-            tlog.detail("found", series_title, series_id, f"{label} · {rel_title} ({seeders_label}s)")
+            return grabbed, notified, 0
 
-        return grabbed, notified
+        note = f"{label} · {rel_title} ({seeders_label}s)"
+        if dry_run:
+            note += " · simulation"
+        elif not auto_grab:
+            note += " · auto-grab désactivé"
+        tlog.detail("found", series_title, series_id, note)
+        return grabbed, notified, 1
 
     def _best_release(
         self,

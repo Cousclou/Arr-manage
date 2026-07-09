@@ -63,24 +63,6 @@ document.body.addEventListener('click', (e) => {
   });
 });
 
-const manualLookupType = document.getElementById('manual-lookup-type');
-const manualQueryHint = document.getElementById('manual-query-hint');
-
-const lookupHints = {
-  id: 'ID interne de la série ou du film dans Sonarr/Radarr.',
-  title: 'Titre exact ou partiel tel qu\'il apparaît dans la bibliothèque.',
-  tvdb: 'Identifiant TheTVDB.',
-  tmdb: 'Identifiant TMDb.',
-};
-
-function updateManualSearchHint() {
-  if (!manualLookupType || !manualQueryHint) return;
-  manualQueryHint.textContent = lookupHints[manualLookupType.value] || lookupHints.id;
-}
-
-manualLookupType?.addEventListener('change', updateManualSearchHint);
-updateManualSearchHint();
-
 function activateWantedTab(tabId, pushState = true) {
   document.querySelectorAll('.wanted-tab').forEach((btn) => {
     const active = btn.dataset.wantedTab === tabId;
@@ -118,5 +100,42 @@ initWantedTabs();
 document.body.addEventListener('htmx:afterSwap', (event) => {
   if (event.detail.target?.id === 'wanted-preview') {
     initWantedTabs();
+    initWantedFilters();
   }
 });
+
+function initWantedFilters() {
+  document.querySelectorAll('.wanted-filter').forEach((box) => {
+    const panel = box.closest('.wanted-panel');
+    if (!panel) return;
+
+    const rows = panel.querySelectorAll('.wanted-row');
+    const emptyRow = panel.querySelector('.wanted-row-none');
+    const countEl = panel.querySelector('.wanted-visible-count');
+    const typeSelect = box.querySelector('.wanted-filter-type');
+    const input = box.querySelector('.wanted-filter-input');
+    if (!typeSelect || !input) return;
+
+    const applyFilter = () => {
+      const field = typeSelect.value;
+      const query = input.value.trim().toLowerCase();
+      let visible = 0;
+
+      rows.forEach((row) => {
+        const value = (row.dataset[field] || '').toString().toLowerCase();
+        const match = !query || value.includes(query);
+        row.hidden = !match;
+        if (match) visible += 1;
+      });
+
+      if (countEl) countEl.textContent = String(visible);
+      if (emptyRow) emptyRow.hidden = visible > 0 || rows.length === 0;
+    };
+
+    input.addEventListener('input', applyFilter);
+    typeSelect.addEventListener('change', applyFilter);
+    applyFilter();
+  });
+}
+
+initWantedFilters();

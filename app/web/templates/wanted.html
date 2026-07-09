@@ -16,6 +16,19 @@
     </div>
   </header>
 
+  {% if settings.get('dry_run') == 'true' %}
+  <div class="alert alert-warning">
+    <strong>Mode simulation actif</strong> — les recherches s'exécutent mais aucun téléchargement ne sera lancé.
+    <a href="/settings?tab=advanced" class="btn btn-ghost btn-sm">Désactiver</a>
+  </div>
+  {% endif %}
+  {% if settings.get('search_auto_grab') != 'true' %}
+  <div class="alert alert-warning">
+    <strong>Auto-grab désactivé</strong> — les releases trouvées seront listées dans le journal mais pas téléchargées automatiquement.
+    <a href="/settings?tab=search" class="btn btn-ghost btn-sm">Activer</a>
+  </div>
+  {% endif %}
+
   {% if request.query_params.get('started') %}
   <div class="alert alert-success">Recherche lancée en arrière-plan.</div>
   {% endif %}

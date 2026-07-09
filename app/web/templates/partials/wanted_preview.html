@@ -21,42 +21,42 @@
 </div>
 {% endif %}
 
-<section class="wanted-panel active" id="wanted-panel-sonarr" role="tabpanel">
+<section class="wanted-panel{% if active_tab != 'radarr' %} active{% endif %}" id="wanted-panel-sonarr" role="tabpanel"{% if active_tab == 'radarr' %} hidden{% endif %}>
   <div class="wanted-panel-header">
     <div>
       <h2 class="wanted-panel-title">{{ icon('tv', 20) }} Séries Sonarr</h2>
-      <p class="wanted-panel-desc">{{ preview.sonarr_count }} séries · {{ preview.sonarr_episodes }} épisodes manquants</p>
+      <p class="wanted-panel-desc">
+        <span class="wanted-visible-count" data-total="{{ preview.sonarr_count }}">{{ preview.sonarr_count }}</span> / {{ preview.sonarr_count }} séries
+        · {{ preview.sonarr_episodes }} épisodes manquants
+      </p>
     </div>
     {% if sonarr_configured %}
-    <form method="post" action="/wanted/run-all" class="inline-form">
+    <form method="post" action="/wanted/run-sonarr" class="inline-form">
       <button type="submit" class="btn btn-outline btn-sm">{{ icon('zap', 14) }} Rechercher tout Sonarr</button>
     </form>
     {% endif %}
   </div>
 
   <div class="grid-2 wanted-panel-tools">
-    <div class="card">
+    <div class="card wanted-filter" data-filter-panel="sonarr">
       <div class="card-header">
-        <h3 class="card-title">{{ icon('search', 16) }} Recherche manuelle</h3>
+        <h3 class="card-title">{{ icon('search', 16) }} Filtrer la liste</h3>
       </div>
       <div class="card-content">
-        <form method="post" action="/wanted/search" class="stack-form wanted-manual-form" data-service="sonarr">
-          <input type="hidden" name="service" value="sonarr">
-          <div class="field-group">
-            <label>Rechercher par</label>
-            <select name="lookup_type" class="input wanted-lookup-type">
-              <option value="id">ID Sonarr</option>
-              <option value="title">Titre</option>
-              <option value="tvdb">TVDB</option>
-              <option value="tmdb">TMDb</option>
-            </select>
-          </div>
-          <div class="field-group">
-            <label>Valeur</label>
-            <input type="text" name="media_query" class="input" required placeholder="ex: Call It Love, 12345" {% if not sonarr_configured %}disabled{% endif %}>
-          </div>
-          <button type="submit" class="btn btn-primary btn-sm" {% if not sonarr_configured %}disabled{% endif %}>{{ icon('zap', 14) }} Lancer</button>
-        </form>
+        <div class="field-group">
+          <label>Filtrer par</label>
+          <select class="input wanted-filter-type">
+            <option value="title">Titre</option>
+            <option value="id">ID Sonarr</option>
+            <option value="tvdb">TVDB</option>
+            <option value="tmdb">TMDb</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Valeur</label>
+          <input type="text" class="input wanted-filter-input" placeholder="ex: Call It Love, 12345">
+          <p class="field-hint text-muted text-sm">Filtre instantané sur le tableau ci-dessous.</p>
+        </div>
       </div>
     </div>
 
@@ -111,7 +111,11 @@
           </thead>
           <tbody>
             {% for s in preview.sonarr %}
-            <tr>
+            <tr class="wanted-row"
+                data-id="{{ s.id }}"
+                data-title="{{ s.title|lower }}"
+                data-tvdb="{{ s.tvdb or '' }}"
+                data-tmdb="{{ s.tmdb or '' }}">
               <td class="font-medium">{{ s.title }}</td>
               <td class="text-muted">{{ s.year or '—' }}</td>
               <td class="text-muted text-sm">{{ s.tvdb or '—' }}</td>
@@ -120,15 +124,15 @@
               <td class="text-right">
                 <form method="post" action="/wanted/search" class="inline-form">
                   <input type="hidden" name="service" value="sonarr">
-                  <input type="hidden" name="lookup_type" value="id">
-                  <input type="hidden" name="media_query" value="{{ s.id }}">
-                  <button type="submit" class="btn btn-outline btn-sm">Rechercher</button>
+                  <input type="hidden" name="series_id" value="{{ s.id }}">
+                  <button type="submit" class="btn btn-outline btn-sm">{{ icon('zap', 14) }} Rechercher</button>
                 </form>
               </td>
             </tr>
             {% else %}
-            <tr><td colspan="6" class="empty-state">Aucune série wanted</td></tr>
+            <tr class="wanted-row-empty"><td colspan="6" class="empty-state">Aucune série wanted</td></tr>
             {% endfor %}
+            <tr class="wanted-row-none" hidden><td colspan="6" class="empty-state">Aucun résultat pour ce filtre</td></tr>
           </tbody>
         </table>
       </div>
@@ -137,42 +141,41 @@
   </div>
 </section>
 
-<section class="wanted-panel" id="wanted-panel-radarr" role="tabpanel" hidden>
+<section class="wanted-panel{% if active_tab == 'radarr' %} active{% endif %}" id="wanted-panel-radarr" role="tabpanel"{% if active_tab != 'radarr' %} hidden{% endif %}>
   <div class="wanted-panel-header">
     <div>
       <h2 class="wanted-panel-title">{{ icon('film', 20) }} Films Radarr</h2>
-      <p class="wanted-panel-desc">{{ preview.radarr_count }} films sans fichier</p>
+      <p class="wanted-panel-desc">
+        <span class="wanted-visible-count" data-total="{{ preview.radarr_count }}">{{ preview.radarr_count }}</span> / {{ preview.radarr_count }} films
+      </p>
     </div>
-    {% if radarr_configured and settings.get('search_radarr_enabled') == 'true' %}
-    <form method="post" action="/wanted/run-all" class="inline-form">
+    {% if radarr_configured %}
+    <form method="post" action="/wanted/run-radarr" class="inline-form">
       <button type="submit" class="btn btn-outline btn-sm">{{ icon('zap', 14) }} Rechercher tout Radarr</button>
     </form>
     {% endif %}
   </div>
 
   <div class="grid-2 wanted-panel-tools">
-    <div class="card">
+    <div class="card wanted-filter" data-filter-panel="radarr">
       <div class="card-header">
-        <h3 class="card-title">{{ icon('search', 16) }} Recherche manuelle</h3>
+        <h3 class="card-title">{{ icon('search', 16) }} Filtrer la liste</h3>
       </div>
       <div class="card-content">
-        <form method="post" action="/wanted/search" class="stack-form wanted-manual-form" data-service="radarr">
-          <input type="hidden" name="service" value="radarr">
-          <div class="field-group">
-            <label>Rechercher par</label>
-            <select name="lookup_type" class="input wanted-lookup-type">
-              <option value="id">ID Radarr</option>
-              <option value="title">Titre</option>
-              <option value="tmdb">TMDb</option>
-              <option value="tvdb">TVDB</option>
-            </select>
-          </div>
-          <div class="field-group">
-            <label>Valeur</label>
-            <input type="text" name="media_query" class="input" required placeholder="ex: Inception, 12345" {% if not radarr_configured %}disabled{% endif %}>
-          </div>
-          <button type="submit" class="btn btn-primary btn-sm" {% if not radarr_configured %}disabled{% endif %}>{{ icon('zap', 14) }} Lancer</button>
-        </form>
+        <div class="field-group">
+          <label>Filtrer par</label>
+          <select class="input wanted-filter-type">
+            <option value="title">Titre</option>
+            <option value="id">ID Radarr</option>
+            <option value="tmdb">TMDb</option>
+            <option value="tvdb">TVDB</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Valeur</label>
+          <input type="text" class="input wanted-filter-input" placeholder="ex: Inception, 12345">
+          <p class="field-hint text-muted text-sm">Filtre instantané sur le tableau ci-dessous.</p>
+        </div>
       </div>
     </div>
 
@@ -226,7 +229,11 @@
           </thead>
           <tbody>
             {% for m in preview.radarr %}
-            <tr>
+            <tr class="wanted-row"
+                data-id="{{ m.id }}"
+                data-title="{{ m.title|lower }}"
+                data-tmdb="{{ m.tmdb or '' }}"
+                data-tvdb="{{ m.tvdb or '' }}">
               <td class="font-medium">{{ m.title }}</td>
               <td class="text-muted">{{ m.year or '—' }}</td>
               <td class="text-muted text-sm">{{ m.tmdb or '—' }}</td>
@@ -234,15 +241,15 @@
               <td class="text-right">
                 <form method="post" action="/wanted/search" class="inline-form">
                   <input type="hidden" name="service" value="radarr">
-                  <input type="hidden" name="lookup_type" value="id">
-                  <input type="hidden" name="media_query" value="{{ m.id }}">
-                  <button type="submit" class="btn btn-outline btn-sm">Rechercher</button>
+                  <input type="hidden" name="movie_id" value="{{ m.id }}">
+                  <button type="submit" class="btn btn-outline btn-sm">{{ icon('zap', 14) }} Rechercher</button>
                 </form>
               </td>
             </tr>
             {% else %}
-            <tr><td colspan="5" class="empty-state">Aucun film wanted</td></tr>
+            <tr class="wanted-row-empty"><td colspan="5" class="empty-state">Aucun film wanted</td></tr>
             {% endfor %}
+            <tr class="wanted-row-none" hidden><td colspan="5" class="empty-state">Aucun résultat pour ce filtre</td></tr>
           </tbody>
         </table>
       </div>

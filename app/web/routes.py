@@ -17,7 +17,6 @@ from app.config import get_settings
 from app.db.models import AnimeWatch, ExcludedMedia, IgnoredImport, MediaUpgradeRule, TaskLog
 from app.db.session import get_db
 from app.services.runtime_config import SETTING_GROUPS, TASK_META, RuntimeConfig, iter_setting_fields
-from app.services.media_resolver import MediaResolveError, resolve_radarr_movie, resolve_sonarr_series
 from app.services.pending_imports import fetch_pending_imports
 from app.services.task_logger import get_log_details
 from app.services.wanted_search import list_wanted_preview
@@ -427,53 +426,52 @@ async def wanted_preview_partial(request: Request, db: AsyncSession = Depends(ge
 @router.post("/wanted/search")
 async def wanted_search_manual(
     service: str = Form(...),
-    lookup_type: str = Form("id"),
-    media_query: str = Form(""),
-    media_id: int | None = Form(None),
+    series_id: int | None = Form(None),
+    movie_id: int | None = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
     cfg = RuntimeConfig(db)
     settings = await cfg.all_settings()
-    query = media_query.strip() or (str(media_id) if media_id is not None else "")
-
-    if not query:
-        return RedirectResponse("/wanted?error=empty", status_code=303)
 
     if service == "sonarr":
+        if not series_id:
+            return RedirectResponse("/wanted?error=empty", status_code=303)
         client = SonarrClient(base_url=settings.get("sonarr_url"), api_key=settings.get("sonarr_api_key"))
         if not client.configured:
             return RedirectResponse("/wanted?error=sonarr", status_code=303)
-        try:
-            series_id, _ = await resolve_sonarr_series(client, lookup_type, query)
-            job_kwargs: dict = {"series_id": series_id}
-        except MediaResolveError as exc:
-            return RedirectResponse(f"/wanted?error={exc.code}", status_code=303)
-        except Exception as exc:
-            logger.exception("Erreur résolution Sonarr")
-            return RedirectResponse("/wanted?error=search", status_code=303)
-        finally:
-            await client.close()
+        await client.close()
+        job_kwargs: dict = {"series_id": series_id}
     elif service == "radarr":
+        if not movie_id:
+            return RedirectResponse("/wanted?error=empty", status_code=303)
         client = RadarrClient(base_url=settings.get("radarr_url"), api_key=settings.get("radarr_api_key"))
         if not client.configured:
             return RedirectResponse("/wanted?error=radarr", status_code=303)
-        try:
-            movie_id, _ = await resolve_radarr_movie(client, lookup_type, query)
-            job_kwargs = {"movie_id": movie_id}
-        except MediaResolveError as exc:
-            return RedirectResponse(f"/wanted?error={exc.code}", status_code=303)
-        except Exception as exc:
-            logger.exception("Erreur résolution Radarr")
-            return RedirectResponse("/wanted?error=search", status_code=303)
-        finally:
-            await client.close()
+        await client.close()
+        job_kwargs = {"movie_id": movie_id}
     else:
         return RedirectResponse("/wanted?error=service", status_code=303)
 
     redis = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
     await redis.enqueue_job("wanted_search", **job_kwargs)
     await redis.aclose()
-    return RedirectResponse("/wanted?started=1", status_code=303)
+    return RedirectResponse("/wanted?started=1&tab=" + service, status_code=303)
+
+
+@router.post("/wanted/run-sonarr")
+async def wanted_run_sonarr():
+    redis = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
+    await redis.enqueue_job("wanted_search", only_service="sonarr")
+    await redis.aclose()
+    return RedirectResponse("/wanted?started=1&tab=sonarr", status_code=303)
+
+
+@router.post("/wanted/run-radarr")
+async def wanted_run_radarr():
+    redis = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
+    await redis.enqueue_job("wanted_search", only_service="radarr")
+    await redis.aclose()
+    return RedirectResponse("/wanted?started=1&tab=radarr", status_code=303)
 
 
 @router.post("/wanted/run-all")

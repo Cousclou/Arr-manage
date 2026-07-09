@@ -136,6 +136,9 @@ def _build_summary(task_name: str, stats: dict, truncated: bool) -> str:
         parts.append(f"{stats.get('radarr_movies', 0)} films Radarr")
         if stats.get("sonarr_grabbed") or stats.get("radarr_grabbed"):
             parts.append(f"{stats.get('sonarr_grabbed', 0) + stats.get('radarr_grabbed', 0)} grabs")
+        found = stats.get("sonarr_found", 0) + stats.get("radarr_found", 0)
+        if found:
+            parts.append(f"{found} releases trouvées")
         if stats.get("sonarr_notified") or stats.get("radarr_notified"):
             parts.append(f"{stats.get('sonarr_notified', 0) + stats.get('radarr_notified', 0)} alertes seeders")
     else:

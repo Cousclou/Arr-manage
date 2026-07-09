@@ -56,10 +56,19 @@ async def anime_handler(ctx: dict) -> dict:
         return await service.process()
 
 
-async def wanted_search(ctx: dict, series_id: int | None = None, movie_id: int | None = None) -> dict:
+async def wanted_search(
+    ctx: dict,
+    series_id: int | None = None,
+    movie_id: int | None = None,
+    only_service: str | None = None,
+) -> dict:
     async with async_session() as db:
         service = WantedSearchService(db)
-        return await service.run(series_id=series_id, movie_id=movie_id)
+        return await service.run(
+            series_id=series_id,
+            movie_id=movie_id,
+            only_service=only_service,
+        )
 
 
 class WorkerSettings:
