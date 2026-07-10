@@ -556,6 +556,7 @@ body {
   animation: pulse 1s ease-in-out infinite;
 }
 
+.wanted-search-progress.wanted-search-done,
 .wanted-search-result {
   border-color: hsl(var(--primary) / 0.35);
 }

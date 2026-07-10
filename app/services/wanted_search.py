@@ -214,7 +214,8 @@ class WantedSearchService:
             tlog.detail(
                 "progress", title, sid,
                 f"Analyse · {len(missing)} épisode(s) manquant(s)"
-                + (" · stratégie season pack" if use_season_first else ""),
+                + (f" · année {year}" if year else "")
+                + (" · stratégie season pack d'abord" if use_season_first else " · stratégie épisode par épisode"),
             )
 
             if use_season_first:
@@ -248,9 +249,12 @@ class WantedSearchService:
                         stats["sonarr_grabbed"] += g
                         stats["sonarr_notified"] += n
                         stats["sonarr_found"] += f
-                        if g:
-                            continue
+                        continue
 
+                    tlog.detail(
+                        "progress", title, sid,
+                        f"S{season_num:02d} · {len(releases)} release(s), aucun season pack · épisodes…",
+                    )
                     for ep in season_eps:
                         g, n, f = await self._search_episode(
                             client, pushover, series, ep, min_seeders, notify_low,
@@ -269,19 +273,19 @@ class WantedSearchService:
                     pack_done = False
                     if prefer_pack and season_eps:
                         first = season_eps[0]
+                        tlog.detail("progress", title, sid, f"S{first.season:02d} · Recherche season pack…")
                         releases = await client.search_season_releases(sid, first.season)
                         pack = self._best_release(releases, min_seeders, prefer_season_pack=True, season_only=True)
                         if pack:
                             g, n, f = await self._handle_release(
                                 client, pushover, title, first.episode_id, pack,
                                 min_seeders, notify_low, auto_grab, dry_run, tlog,
-                                f"S{first.season:02d}E{first.episode:02d} via pack",
+                                f"S{first.season:02d} season pack",
                             )
                             stats["sonarr_grabbed"] += g
                             stats["sonarr_notified"] += n
                             stats["sonarr_found"] += f
-                            if g:
-                                pack_done = True
+                            pack_done = True
 
                     if not pack_done:
                         for ep in season_eps:

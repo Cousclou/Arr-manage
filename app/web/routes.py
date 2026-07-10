@@ -491,6 +491,8 @@ async def wanted_search_progress(
     if not log:
         return HTMLResponse("<p class='empty-state'>Recherche introuvable.</p>", status_code=404)
 
+    await db.refresh(log)
+
     result: dict = {}
     if log.stats_json:
         try:
@@ -522,10 +524,7 @@ async def wanted_search_progress(
         "settings": settings,
     }
 
-    if running:
-        return templates.TemplateResponse("partials/wanted_search_progress.html", ctx)
-
-    return templates.TemplateResponse("partials/wanted_search_result.html", ctx)
+    return templates.TemplateResponse("partials/wanted_search_progress.html", ctx)
 
 
 async def _execute_wanted_search(
@@ -535,19 +534,29 @@ async def _execute_wanted_search(
     movie_id: int | None,
 ) -> None:
     async with async_session() as db:
+        tlog = TaskLogger(db, "wanted_search", service="search")
+        await tlog.resume(log_id)
+        finished = False
         try:
+            tlog.detail("progress", "MediaGuard", None, "Démarrage de la recherche…")
             svc = WantedSearchService(db)
             if service == "sonarr":
                 await svc.run(series_id=series_id, log_id=log_id)
             else:
                 await svc.run(movie_id=movie_id, log_id=log_id)
+            finished = True
         except Exception:
             logger.exception("Erreur recherche wanted manuelle")
-            tlog = TaskLogger(db, "wanted_search", service="search")
-            await tlog.resume(log_id)
             tlog.detail("error", "Recherche", info="Erreur inattendue")
             tlog.set_stats({"errors": 1})
             await tlog.finish("error", "Erreur lors de la recherche")
+            finished = True
+        finally:
+            if not finished:
+                log = await db.get(TaskLog, log_id)
+                if log and log.status == "running":
+                    tlog.set_stats({"errors": 1})
+                    await tlog.finish("error", "Recherche interrompue")
 
 
 def _wanted_search_error(request: Request, code: str, tab: str) -> RedirectResponse:

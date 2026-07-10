@@ -1,12 +1,14 @@
-{% from "macros.html" import action_badge %}
+{% from "macros.html" import badge, action_badge %}
 {% from "macros/icons.html" import icon %}
 
 <div id="wanted-search-progress-{{ log_id }}"
-     class="card wanted-search-progress"
+     class="card wanted-search-progress{% if not running %} wanted-search-done{% endif %}"
+     data-search-done="{{ 'true' if not running else 'false' }}"
      {% if running %}
      hx-get="/wanted/search/progress/{{ log_id }}?service={{ service }}"
-     hx-trigger="every 1s"
+     hx-trigger="every 2s"
      hx-swap="outerHTML"
+     hx-sync="this:replace"
      {% endif %}>
   <div class="card-header flex-between">
     <div>
@@ -26,24 +28,64 @@
       <span class="search-progress-spinner"></span>
       <span>{{ log.message or 'Recherche sur les indexeurs…' }}</span>
     </div>
+    {% elif result and not result.get('skipped') %}
+    <div class="search-result-stats">
+      {% if service == 'sonarr' %}
+      <span>{{ result.get('sonarr_found', 0) }} release(s) trouvée(s)</span>
+      <span>{{ result.get('sonarr_grabbed', 0) }} téléchargement(s)</span>
+      <span>{{ result.get('sonarr_notified', 0) }} alerte(s)</span>
+      {% else %}
+      <span>{{ result.get('radarr_found', 0) }} release(s) trouvée(s)</span>
+      <span>{{ result.get('radarr_grabbed', 0) }} téléchargement(s)</span>
+      <span>{{ result.get('radarr_notified', 0) }} alerte(s)</span>
+      {% endif %}
+      {% if result.get('errors') %}<span class="text-warning">{{ result.errors }} erreur(s)</span>{% endif %}
+      {% if result.get('dry_run') %}<span class="text-muted">Mode simulation</span>{% endif %}
+    </div>
+    {% if log %}
+    <p class="text-sm text-muted mt-2">{{ log.message }}</p>
+    {% endif %}
     {% endif %}
 
-    {% if details %}
+    {% if grouped_details %}
+    <div class="search-result-groups mt-4">
+      {% for group in grouped_details %}
+      <div class="search-result-group">
+        <h3 class="search-result-group-title">{{ group.label }}</h3>
+        <table class="table table-compact">
+          <thead><tr><th>Action</th><th>Info</th></tr></thead>
+          <tbody>
+            {% for d in group.items %}
+            <tr>
+              <td>{{ action_badge(d.action) }}</td>
+              <td class="text-sm text-muted">{{ d.detail or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endfor %}
+    </div>
+    {% elif details %}
     <div class="search-progress-log mt-4">
       <table class="table table-compact">
         <thead><tr><th>Action</th><th>Info</th></tr></thead>
         <tbody>
           {% for d in details %}
+          {% if d.action != 'progress' or running %}
           <tr class="{% if d.action == 'progress' %}search-progress-row{% endif %}">
             <td>{{ action_badge(d.action) }}</td>
             <td class="text-sm text-muted">{{ d.detail or '—' }}</td>
           </tr>
+          {% endif %}
           {% endfor %}
         </tbody>
       </table>
     </div>
     {% elif running %}
     <p class="text-sm text-muted mt-4">Connexion aux indexeurs…</p>
+    {% else %}
+    <p class="empty-state mt-4">Aucun résultat détaillé pour cette recherche.</p>
     {% endif %}
   </div>
 </div>

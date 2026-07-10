@@ -97,6 +97,13 @@ function initWantedTabs() {
 
 initWantedTabs();
 
+document.body.addEventListener('htmx:beforeRequest', (event) => {
+  const elt = event.detail.elt;
+  if (elt?.dataset?.searchDone === 'true') {
+    event.preventDefault();
+  }
+});
+
 document.body.addEventListener('htmx:afterSwap', (event) => {
   if (event.detail.target?.id === 'wanted-preview') {
     initWantedTabs();

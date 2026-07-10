@@ -80,7 +80,7 @@ class TaskLogger:
     def set_stats(self, stats: dict) -> None:
         self.stats = stats
 
-    async def detail(
+    def detail(
         self,
         action: str,
         media_title: str,
@@ -98,7 +98,11 @@ class TaskLogger:
         }
         self._details.append(entry)
         if self._live and self._log_id:
-            await self._flush_detail(entry)
+            import asyncio
+            try:
+                asyncio.get_running_loop().create_task(self._flush_detail(entry))
+            except RuntimeError:
+                pass
 
     async def _flush_detail(self, entry: dict) -> None:
         self.db.add(TaskLogDetail(
