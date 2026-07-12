@@ -10,6 +10,7 @@ from app.services.anime_service import AnimeService
 from app.services.import_monitor import ImportMonitorService
 from app.services.radarr_manager import RadarrMonitorService
 from app.services.sonarr_manager import SonarrMonitorService
+from app.services.indexer_health import IndexerHealthService
 from app.services.upgrade_service import UpgradeService
 from app.services.wanted_search import WantedSearchService
 
@@ -71,9 +72,18 @@ async def wanted_search(
         )
 
 
+async def indexer_health(ctx: dict) -> dict:
+    async with async_session() as db:
+        service = IndexerHealthService(db)
+        return await service.check()
+
+
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
-    functions = [sonarr_monitor, radarr_monitor, upgrade_check, import_monitor, anime_handler, wanted_search]
+    functions = [
+        sonarr_monitor, radarr_monitor, upgrade_check, import_monitor,
+        anime_handler, wanted_search, indexer_health,
+    ]
     on_startup = startup
     on_shutdown = shutdown
     max_jobs = 5

@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% from "macros.html" import badge %}
+{% from "macros/icons.html" import icon %}
+{% block title %}Indexeurs — MediaGuard{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1 class="page-title">Santé indexeurs</h1>
+    <p class="page-description">
+      Détection des indexeurs KO sur Sonarr/Radarr, vérification Prowlarr et re-test automatique.
+    </p>
+  </div>
+  <div class="header-actions">
+    <form method="post" action="/indexers/run" class="inline-form">
+      <button type="submit" class="btn btn-primary btn-sm">{{ icon('zap', 14) }} Lancer le check</button>
+    </form>
+    <a href="/settings?tab=prowlarr" class="btn btn-outline btn-sm">{{ icon('settings', 14) }} Configurer</a>
+  </div>
+</header>
+
+{% if request.query_params.get('started') %}
+<div class="alert alert-success">Vérification des indexeurs lancée en arrière-plan.</div>
+{% endif %}
+{% if request.query_params.get('added') %}
+<div class="alert alert-success">Indexeur exclu du monitoring.</div>
+{% endif %}
+{% if request.query_params.get('removed') %}
+<div class="alert alert-success">Exclusion supprimée.</div>
+{% endif %}
+{% if request.query_params.get('error') == 'empty' %}
+<div class="alert alert-warning">Indiquez un nom d'indexeur.</div>
+{% endif %}
+
+{% if not settings.get('prowlarr_enabled') == 'true' %}
+<div class="alert alert-warning">
+  Prowlarr est désactivé — activez-le dans <a href="/settings?tab=prowlarr">Configuration → Prowlarr</a>.
+</div>
+{% elif not overview.prowlarr_configured %}
+<div class="alert alert-warning">
+  Configurez l'URL et la clé API Prowlarr dans <a href="/settings?tab=prowlarr">Configuration</a>.
+</div>
+{% endif %}
+
+{% if overview.errors %}
+<div class="alert alert-warning">
+  {% for service, message in overview.errors.items() %}
+  <p><strong>{{ service|capitalize }}</strong> : {{ message }}</p>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="stats-grid mb-6">
+  <div class="stat-card">
+    <span class="stat-label">Prowlarr</span>
+    <span class="stat-value">
+      {% if overview.prowlarr_ok %}{{ badge('Connecté', 'success') }}{% else %}{{ badge('Hors ligne', 'destructive') }}{% endif %}
+    </span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Indexeurs actifs</span>
+    <span class="stat-value">{{ overview.indexers | selectattr('enabled') | list | length }}</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Problèmes détectés</span>
+    <span class="stat-value">{{ overview.issue_count }}</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">Exclus</span>
+    <span class="stat-value">{{ overview.excluded | length }}</span>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Exclure un indexeur</h2></div>
+    <div class="card-content">
+      <p class="text-sm text-muted mb-4">Les indexeurs exclus ne sont pas surveillés. Les indexeurs désactivés dans Prowlarr sont ignorés automatiquement.</p>
+      <form method="post" action="/indexers/exclude" class="stack-form">
+        <div class="field-group">
+          <label>Nom (comme dans Prowlarr)</label>
+          <input type="text" name="name" class="input" list="indexer-names" placeholder="YGG" required>
+          <datalist id="indexer-names">
+            {% for idx in overview.indexers %}
+            <option value="{{ idx.name }}">
+            {% endfor %}
+          </datalist>
+        </div>
+        <div class="field-group">
+          <label>Raison (optionnel)</label>
+          <input type="text" name="reason" class="input" placeholder="maintenance">
+        </div>
+        <button type="submit" class="btn btn-outline btn-sm">Exclure</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2 class="card-title">Exclusions ({{ overview.excluded | length }})</h2></div>
+    <div class="card-content p-0">
+      <table class="table table-compact">
+        <thead><tr><th>Nom</th><th>Raison</th><th></th></tr></thead>
+        <tbody>
+          {% for item in overview.excluded %}
+          <tr>
+            <td>{{ item.name }}</td>
+            <td class="text-muted text-sm">{{ item.reason or '—' }}</td>
+            <td class="text-right">
+              <form method="post" action="/indexers/exclude/{{ item.id }}/delete">
+                <button type="submit" class="btn btn-ghost btn-sm btn-danger">✕</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="empty-state">Aucune exclusion</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-6">
+  <div class="card-header flex-between">
+    <div>
+      <h2 class="card-title">État des indexeurs</h2>
+      <p class="card-description">Synchronisés via Prowlarr · indexeurs désactivés affichés mais non surveillés</p>
+    </div>
+  </div>
+  <div class="card-content p-0">
+    <div class="wanted-table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Indexeur</th>
+            <th>Protocole</th>
+            <th>Actif</th>
+            <th>Prowlarr</th>
+            <th>Sonarr</th>
+            <th>Radarr</th>
+            <th>Dernier check</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for idx in overview.indexers %}
+          <tr class="{% if idx.excluded %}text-muted{% endif %}">
+            <td class="font-medium">
+              {{ idx.name }}
+              {% if idx.excluded %}{{ badge('Exclu', 'secondary') }}{% endif %}
+            </td>
+            <td class="text-sm text-muted">{{ idx.protocol }}</td>
+            <td>
+              {% if idx.enabled %}{{ badge('Oui', 'outline') }}{% else %}{{ badge('Non', 'secondary') }}{% endif %}
+            </td>
+            <td>
+              {% if not idx.enabled %}—
+              {% elif idx.prowlarr_blocked %}{{ badge('Bloqué', 'destructive') }}
+              {% else %}{{ badge('OK', 'success') }}{% endif %}
+            </td>
+            <td class="text-sm">
+              {% if idx.sonarr_issue %}
+              <span class="text-warning" title="{{ idx.sonarr_issue }}">KO</span>
+              {% else %}OK{% endif %}
+            </td>
+            <td class="text-sm">
+              {% if idx.radarr_issue %}
+              <span class="text-warning" title="{{ idx.radarr_issue }}">KO</span>
+              {% else %}OK{% endif %}
+            </td>
+            <td class="text-sm text-muted">
+              {% if idx.last_checked %}{{ idx.last_checked | local_dt }}{% else %}—{% endif %}
+              {% if idx.last_message %}<br><span class="text-xs">{{ idx.last_message[:80] }}</span>{% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="empty-state">Aucun indexeur — configurez Prowlarr</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-6">
+  <div class="card-header flex-between">
+    <div>
+      <h2 class="card-title">Journal indexeurs</h2>
+      <p class="card-description">Dernières vérifications automatiques</p>
+    </div>
+    <a href="/logs?service=prowlarr" class="btn btn-ghost btn-sm">Voir tout →</a>
+  </div>
+  <div class="card-content p-0">
+    {% set logs = indexer_logs %}
+    {% include "partials/log_table.html" %}
+  </div>
+</div>
+{% endblock %}

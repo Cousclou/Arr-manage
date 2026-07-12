@@ -7,6 +7,7 @@ class HealthResponse(BaseModel):
     status: str
     sonarr: bool
     radarr: bool
+    prowlarr: bool = False
     pushover: bool
 
 

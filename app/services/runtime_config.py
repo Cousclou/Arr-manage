@@ -69,6 +69,16 @@ SETTING_DEFAULTS: dict[str, str] = {
     "search_prefer_season_pack": "true",
     "search_auto_grab": "false",
     "search_old_series_season_first": "true",
+    # Prowlarr / indexeurs
+    "prowlarr_url": "",
+    "prowlarr_api_key": "",
+    "prowlarr_enabled": "true",
+    "task_indexer_health_enabled": "true",
+    "indexer_health_interval": "900",
+    "indexer_health_check_sonarr": "true",
+    "indexer_health_check_radarr": "true",
+    "indexer_notify_on_failure": "true",
+    "indexer_notify_on_recovery": "true",
 }
 
 ENV_OVERRIDES: dict[str, str] = {
@@ -85,6 +95,8 @@ ENV_OVERRIDES: dict[str, str] = {
     "anime_check_interval": "anime_check_interval",
     "upgrade_size_threshold_gb": "upgrade_size_threshold_gb",
     "radarr_exclude_tag_ids": "radarr_exclude_tag_ids",
+    "prowlarr_url": "prowlarr_url",
+    "prowlarr_api_key": "prowlarr_api_key",
 }
 
 
@@ -370,6 +382,34 @@ SETTING_GROUPS: list[dict] = [
         ],
     },
     {
+        "id": "prowlarr",
+        "title": "Prowlarr",
+        "icon": "plug",
+        "sections": [
+            {
+                "title": "Connexion",
+                "description": "Prowlarr est utilisé pour vérifier et réactiver les indexeurs signalés KO par Sonarr/Radarr.",
+                "fields": [
+                    {"key": "prowlarr_enabled", "label": "Activer Prowlarr", "type": "toggle"},
+                    {"key": "prowlarr_url", "label": "URL Prowlarr", "type": "text", "placeholder": "http://prowlarr:9696"},
+                    {"key": "prowlarr_api_key", "label": "Clé API", "type": "password"},
+                ],
+            },
+            {
+                "title": "Santé indexeurs",
+                "description": "Si un indexeur est KO côté Sonarr/Radarr, MediaGuard vérifie Prowlarr, relance un test, puis reteste sur Sonarr/Radarr.",
+                "fields": [
+                    {"key": "task_indexer_health_enabled", "label": "Activer le monitoring", "type": "toggle"},
+                    {"key": "indexer_health_interval", "label": "Intervalle (secondes)", "type": "number"},
+                    {"key": "indexer_health_check_sonarr", "label": "Surveiller Sonarr", "type": "toggle"},
+                    {"key": "indexer_health_check_radarr", "label": "Surveiller Radarr", "type": "toggle"},
+                    {"key": "indexer_notify_on_failure", "label": "Notifier si indexeur KO", "type": "toggle"},
+                    {"key": "indexer_notify_on_recovery", "label": "Notifier si récupération", "type": "toggle"},
+                ],
+            },
+        ],
+    },
+    {
         "id": "advanced",
         "title": "Avancé",
         "icon": "sliders",
@@ -407,4 +447,5 @@ TASK_META = [
     {"name": "import_monitor", "label": "Surveillance imports", "enabled_key": "task_import_monitor_enabled"},
     {"name": "anime_handler", "label": "Handler anime", "enabled_key": "task_anime_handler_enabled"},
     {"name": "wanted_search", "label": "Recherche wanted", "enabled_key": "task_wanted_search_enabled"},
+    {"name": "indexer_health", "label": "Santé indexeurs", "enabled_key": "task_indexer_health_enabled"},
 ]

@@ -102,6 +102,45 @@ class ImportAlert(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class ExcludedIndexer(Base):
+    """Indexeurs exclus du monitoring santé (par nom Prowlarr)."""
+
+    __tablename__ = "excluded_indexers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(256), nullable=False, unique=True)
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IndexerHealthState(Base):
+    """État connu du dernier check par indexeur."""
+
+    __tablename__ = "indexer_health_states"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    indexer_name: Mapped[str] = mapped_column(String(256), nullable=False, unique=True)
+    prowlarr_id: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="unknown")
+    sonarr_ok: Mapped[bool | None] = mapped_column(Boolean)
+    radarr_ok: Mapped[bool | None] = mapped_column(Boolean)
+    prowlarr_ok: Mapped[bool | None] = mapped_column(Boolean)
+    last_message: Mapped[str | None] = mapped_column(String(512))
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class IndexerAlert(Base):
+    """Alertes indexeurs KO pour éviter les doublons Pushover."""
+
+    __tablename__ = "indexer_alerts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    indexer_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    alert_key: Mapped[str] = mapped_column(String(256), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class TaskLog(Base):
     __tablename__ = "task_logs"
 

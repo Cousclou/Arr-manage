@@ -18,6 +18,7 @@ from app.api.schemas import (
     UpgradeRuleCreate,
     UpgradeRuleResponse,
 )
+from app.clients.prowlarr import ProwlarrClient
 from app.clients.pushover import PushoverClient
 from app.clients.radarr import RadarrClient
 from app.clients.sonarr import SonarrClient
@@ -35,10 +36,11 @@ router = APIRouter()
 async def health(db: AsyncSession = Depends(get_db)) -> HealthResponse:
     cfg = RuntimeConfig(db)
     settings = await cfg.all_settings()
-    sonarr_ok = radarr_ok = False
+    sonarr_ok = radarr_ok = prowlarr_ok = False
 
     sonarr = SonarrClient(base_url=settings.get("sonarr_url"), api_key=settings.get("sonarr_api_key"))
     radarr = RadarrClient(base_url=settings.get("radarr_url"), api_key=settings.get("radarr_api_key"))
+    prowlarr = ProwlarrClient(base_url=settings.get("prowlarr_url"), api_key=settings.get("prowlarr_api_key"))
     pushover = PushoverClient(
         user_key=settings.get("pushover_user_key"),
         api_token=settings.get("pushover_api_token"),
@@ -60,10 +62,20 @@ async def health(db: AsyncSession = Depends(get_db)) -> HealthResponse:
     finally:
         await radarr.close()
 
+    try:
+        if prowlarr.configured and settings.get("prowlarr_enabled") == "true":
+            await prowlarr.get_system_status()
+            prowlarr_ok = True
+    except Exception:
+        pass
+    finally:
+        await prowlarr.close()
+
     return HealthResponse(
-        status="ok" if sonarr_ok or radarr_ok else "degraded",
+        status="ok" if sonarr_ok or radarr_ok or prowlarr_ok else "degraded",
         sonarr=sonarr_ok,
         radarr=radarr_ok,
+        prowlarr=prowlarr_ok,
         pushover=pushover.configured,
     )
 
@@ -77,6 +89,7 @@ async def trigger_task(task_name: str) -> TriggerResponse:
         "import_monitor",
         "anime_handler",
         "wanted_search",
+        "indexer_health",
     }
     if task_name not in valid_tasks:
         raise HTTPException(404, f"Tâche inconnue: {task_name}")

@@ -16,12 +16,12 @@ from app.clients.pushover import PushoverClient
 from app.clients.radarr import RadarrClient
 from app.clients.sonarr import SonarrClient
 from app.config import get_settings
-from app.db.models import AnimeWatch, ExcludedMedia, IgnoredImport, MediaUpgradeRule, TaskLog
+from app.db.models import AnimeWatch, ExcludedIndexer, ExcludedMedia, IgnoredImport, MediaUpgradeRule, TaskLog
 from app.db.session import async_session, get_db
 from app.services.runtime_config import SETTING_GROUPS, TASK_META, RuntimeConfig, iter_setting_fields
 from app.services.pending_imports import fetch_pending_imports
 from app.services.task_logger import TaskLogger, get_log_details
-from app.services.wanted_search import WantedSearchService, list_wanted_preview
+from app.services.indexer_health import IndexerHealthService, fetch_indexer_overview
 from app.utils.timezone import format_local
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/web/templates")
 templates.env.filters["local_dt"] = format_local
 
-LOG_SERVICES = ["sonarr", "radarr", "upgrade", "import", "anime", "search"]
+LOG_SERVICES = ["sonarr", "radarr", "upgrade", "import", "anime", "search", "prowlarr"]
 LOG_PAGE_SIZE = 25
 
 
@@ -627,3 +627,52 @@ async def wanted_search_all():
     await redis.enqueue_job("wanted_search")
     await redis.aclose()
     return RedirectResponse("/wanted?started=1", status_code=303)
+
+
+@router.get("/indexers", response_class=HTMLResponse)
+async def indexers_page(request: Request, db: AsyncSession = Depends(get_db)):
+    cfg = RuntimeConfig(db)
+    settings = await cfg.all_settings()
+    overview = await fetch_indexer_overview(cfg, db)
+    logs, _ = await _fetch_logs(db, service="prowlarr", limit=5)
+    return templates.TemplateResponse(
+        "indexers.html",
+        {
+            "request": request,
+            "page": "indexers",
+            "settings": settings,
+            "overview": overview,
+            "indexer_logs": logs,
+        },
+    )
+
+
+@router.post("/indexers/run")
+async def indexers_run_check():
+    redis = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
+    await redis.enqueue_job("indexer_health")
+    await redis.aclose()
+    return RedirectResponse("/indexers?started=1", status_code=303)
+
+
+@router.post("/indexers/exclude")
+async def indexers_add_exclusion(
+    name: str = Form(...),
+    reason: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    name = name.strip()
+    if not name:
+        return RedirectResponse("/indexers?error=empty", status_code=303)
+    result = await db.execute(select(ExcludedIndexer).where(ExcludedIndexer.name == name))
+    if not result.scalar_one_or_none():
+        db.add(ExcludedIndexer(name=name, reason=reason or None))
+        await db.commit()
+    return RedirectResponse("/indexers?added=1", status_code=303)
+
+
+@router.post("/indexers/exclude/{item_id}/delete")
+async def indexers_remove_exclusion(item_id: int, db: AsyncSession = Depends(get_db)):
+    await db.execute(delete(ExcludedIndexer).where(ExcludedIndexer.id == item_id))
+    await db.commit()
+    return RedirectResponse("/indexers?removed=1", status_code=303)

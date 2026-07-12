@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     radarr_url: str = "http://localhost:7878"
     radarr_api_key: str = ""
 
+    prowlarr_url: str = "http://localhost:9696"
+    prowlarr_api_key: str = ""
+
     pushover_user_key: str = ""
     pushover_api_token: str = ""
 

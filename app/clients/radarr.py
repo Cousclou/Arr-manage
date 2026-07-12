@@ -97,3 +97,21 @@ class RadarrClient:
 
     async def get_system_status(self) -> dict:
         return await self.get("/system/status")
+
+    async def get_health(self) -> list[dict]:
+        return await self.get("/health")
+
+    async def get_indexers(self) -> list[dict]:
+        return await self.get("/indexer")
+
+    async def get_indexer(self, indexer_id: int) -> dict:
+        return await self.get(f"/indexer/{indexer_id}")
+
+    async def test_indexer(self, indexer: dict) -> bool:
+        try:
+            await self.post("/indexer/test", indexer)
+            return True
+        except httpx.HTTPStatusError:
+            return False
+        except Exception:
+            return False

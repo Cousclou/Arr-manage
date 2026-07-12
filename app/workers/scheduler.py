@@ -21,6 +21,7 @@ INTERVAL_KEYS = {
     "import_monitor": "import_check_interval",
     "anime_handler": "anime_check_interval",
     "wanted_search": "wanted_search_interval",
+    "indexer_health": "indexer_health_interval",
 }
 
 

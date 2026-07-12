@@ -212,6 +212,7 @@ body {
 .service-import { background: hsl(var(--import) / 0.15); color: hsl(var(--import)); }
 .service-anime { background: hsl(var(--anime) / 0.15); color: hsl(var(--anime)); }
 .service-search { background: hsl(45 93% 47% / 0.15); color: hsl(45 93% 55%); }
+.service-prowlarr { background: hsl(280 70% 50% / 0.15); color: hsl(280 70% 65%); }
 .service-system { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
 .service-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
 .service-dot.service-sonarr { background: hsl(var(--sonarr)); }

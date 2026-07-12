@@ -23,6 +23,7 @@ SERVICE_MAP = {
     "import_monitor": "import",
     "anime_handler": "anime",
     "wanted_search": "search",
+    "indexer_health": "prowlarr",
 }
 
 ACTION_LABELS = {
@@ -200,6 +201,18 @@ def _build_summary(task_name: str, stats: dict, truncated: bool) -> str:
             parts.append(f"{found} releases trouvées")
         if stats.get("sonarr_notified") or stats.get("radarr_notified"):
             parts.append(f"{stats.get('sonarr_notified', 0) + stats.get('radarr_notified', 0)} alertes seeders")
+    elif task_name == "indexer_health":
+        parts.append(f"{stats.get('checked', 0)} indexeurs vérifiés")
+        if stats.get("down_arr"):
+            parts.append(f"{stats['down_arr']} KO *arr")
+        if stats.get("down_prowlarr"):
+            parts.append(f"{stats['down_prowlarr']} KO Prowlarr")
+        if stats.get("recovered"):
+            parts.append(f"{stats['recovered']} récupérés")
+        if stats.get("retested"):
+            parts.append(f"{stats['retested']} re-tests")
+        if stats.get("alerts"):
+            parts.append(f"{stats['alerts']} alertes")
     else:
         parts.append(str(stats))
 
