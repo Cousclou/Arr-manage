@@ -63,6 +63,7 @@ class ProwlarrClient:
         return await self.get("/indexerstatus")
 
     async def test_indexer(self, indexer: dict, *, force: bool = False) -> bool:
+        """Teste un indexeur via POST /indexer/test (corps IndexerResource complet)."""
         try:
             await self.post("/indexer/test", indexer, forceTest=force)
             return True
@@ -71,6 +72,19 @@ class ProwlarrClient:
             return False
         except Exception as e:
             logger.warning("Erreur test Prowlarr %s: %s", indexer.get("name"), e)
+            return False
+
+    async def test_indexer_by_id(self, indexer_id: int, *, force: bool = False) -> bool:
+        """Charge l'indexeur par ID puis lance le test (comme l'UI Prowlarr)."""
+        try:
+            indexer = await self.get_indexer(indexer_id)
+            await self.post("/indexer/test", indexer, forceTest=force)
+            return True
+        except httpx.HTTPStatusError as e:
+            logger.warning("Test Prowlarr échoué pour id=%s: %s", indexer_id, e)
+            return False
+        except Exception as e:
+            logger.warning("Erreur test Prowlarr id=%s: %s", indexer_id, e)
             return False
 
     async def test_all_indexers(self) -> bool:

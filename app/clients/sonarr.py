@@ -146,6 +146,16 @@ class SonarrClient:
         except Exception:
             return False
 
+    async def test_indexer_by_id(self, indexer_id: int) -> bool:
+        try:
+            indexer = await self.get_indexer(indexer_id)
+            await self.post("/indexer/test", indexer)
+            return True
+        except httpx.HTTPStatusError:
+            return False
+        except Exception:
+            return False
+
     async def test_all_indexers(self) -> bool:
         try:
             await self.post("/indexer/testall")

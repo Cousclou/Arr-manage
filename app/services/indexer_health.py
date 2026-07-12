@@ -182,9 +182,15 @@ class IndexerHealthService:
                 for svc in target["services"]:
                     message_parts.append(f"{svc}: {target['services'][svc]}")
 
+                prowlarr_id = prowlarr_idx.get("id")
                 if prowlarr_blocked:
-                    tlog.detail("progress", name, prowlarr_idx.get("id"), "KO Prowlarr · re-test ciblé…")
-                    prowlarr_ok = await prowlarr.test_indexer(prowlarr_idx)
+                    tlog.detail(
+                        "progress", name, prowlarr_id,
+                        f"KO Prowlarr · POST /indexer/test id={prowlarr_id}…",
+                    )
+                    prowlarr_ok = await prowlarr.test_indexer_by_id(
+                        prowlarr_id, force=True,
+                    )
                     stats["retested"] += 1
                     if prowlarr_ok:
                         message_parts.append("Prowlarr: récupéré après test")
@@ -210,12 +216,19 @@ class IndexerHealthService:
                 )
 
                 if "sonarr" in target["arr_indexers"]:
-                    sonarr_ok = await self._test_arr_indexer(
+                    sonarr_idx = target["arr_indexers"]["sonarr"]
+                    sonarr_idx_id = sonarr_idx.get("id")
+                    tlog.detail(
+                        "progress", name, sonarr_idx_id,
+                        f"Sonarr · POST /indexer/test id={sonarr_idx_id}…",
+                    )
+                    sonarr_ok = await self._test_arr_indexer_by_id(
                         SonarrClient(
                             base_url=await cfg.get("sonarr_url"),
                             api_key=await cfg.get("sonarr_api_key"),
                         ),
-                        target["arr_indexers"]["sonarr"],
+                        sonarr_idx_id,
+                        service="sonarr",
                     )
                     stats["retested"] += 1
                     message_parts.append(
@@ -223,12 +236,15 @@ class IndexerHealthService:
                     )
 
                 if "radarr" in target["arr_indexers"]:
-                    radarr_ok = await self._test_arr_indexer(
+                    radarr_idx = target["arr_indexers"]["radarr"]
+                    radarr_idx_id = radarr_idx.get("id")
+                    radarr_ok = await self._test_arr_indexer_by_id(
                         RadarrClient(
                             base_url=await cfg.get("radarr_url"),
                             api_key=await cfg.get("radarr_api_key"),
                         ),
-                        target["arr_indexers"]["radarr"],
+                        radarr_idx_id,
+                        service="radarr",
                     )
                     stats["retested"] += 1
                     message_parts.append(
@@ -449,13 +465,18 @@ class IndexerHealthService:
             logger.warning("Impossible de lire indexerstatus Prowlarr: %s", e)
         return blocked
 
-    async def _test_arr_indexer(
+    async def _test_arr_indexer_by_id(
         self,
         client: SonarrClient | RadarrClient,
-        indexer: dict,
+        indexer_id: int | None,
+        *,
+        service: str,
     ) -> bool:
+        if indexer_id is None:
+            logger.warning("Indexeur %s sans id — test ignoré", service)
+            return False
         try:
-            return await client.test_indexer(indexer)
+            return await client.test_indexer_by_id(indexer_id)
         finally:
             await client.close()
 
