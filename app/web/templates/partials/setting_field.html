@@ -18,8 +18,8 @@
 
   {% elif field.type == 'password' %}
   <input type="password" name="{{ field.key }}" id="{{ field.key }}" class="input"
-         value="{{ settings.get(field.key, '') }}" autocomplete="off"
-         placeholder="{% if settings.get(field.key) %}••••••••{% endif %}">
+         autocomplete="off"
+         placeholder="{% if settings.get(field.key) %}Laisser vide pour conserver{% else %}Clé API{% endif %}">
 
   {% elif field.type == 'number' %}
   <input type="number" name="{{ field.key }}" id="{{ field.key }}" class="input"

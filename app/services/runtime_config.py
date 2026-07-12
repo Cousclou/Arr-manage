@@ -388,7 +388,7 @@ SETTING_GROUPS: list[dict] = [
         "sections": [
             {
                 "title": "Connexion",
-                "description": "Prowlarr est utilisé pour vérifier et réactiver les indexeurs signalés KO par Sonarr/Radarr.",
+                "description": "Utilisez http:// (pas https) sauf si vous avez un reverse proxy TLS. Laisser la clé API vide lors d'un enregistrement la conserve.",
                 "fields": [
                     {"key": "prowlarr_enabled", "label": "Activer Prowlarr", "type": "toggle"},
                     {"key": "prowlarr_url", "label": "URL Prowlarr", "type": "text", "placeholder": "http://prowlarr:9696"},

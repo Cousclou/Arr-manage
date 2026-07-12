@@ -207,8 +207,12 @@ async def save_settings(request: Request, db: AsyncSession = Depends(get_db)):
         key = field["key"]
         if field["type"] == "toggle":
             updates[key] = "true" if form.get(key) == "true" else "false"
+        elif field["type"] == "password":
+            value = str(form.get(key, "")).strip()
+            if value:
+                updates[key] = value
         elif key in form:
-            updates[key] = str(form[key])
+            updates[key] = str(form[key]).strip()
 
     cfg = RuntimeConfig(db)
     await cfg.set_many(updates)

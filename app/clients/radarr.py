@@ -4,49 +4,57 @@ from typing import Any
 
 import httpx
 
+from app.clients.arr_http import arr_request, normalize_arr_url
 from app.config import get_settings
 
 
 class RadarrClient:
     def __init__(self, base_url: str | None = None, api_key: str | None = None) -> None:
         settings = get_settings()
-        self.base_url = (base_url or settings.radarr_url or "").rstrip("/")
-        self.api_key = api_key if api_key is not None else settings.radarr_api_key
-        self._client: httpx.AsyncClient | None = None
+        self.base_url = normalize_arr_url(base_url or settings.radarr_url or "")
+        raw_key = api_key if api_key is not None else settings.radarr_api_key
+        self.api_key = (raw_key or "").strip()
+        self._resolved_url: str | None = None
 
     @property
     def configured(self) -> bool:
         return bool(self.base_url and self.api_key)
 
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                base_url=self.base_url,
-                headers={"X-Api-Key": self.api_key},
-                timeout=120.0,
-            )
-        return self._client
-
     async def close(self) -> None:
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
+        return None
 
     async def get(self, path: str, **params: Any) -> Any:
-        client = await self._get_client()
-        resp = await client.get(f"/api/v3{path}", params=params)
-        resp.raise_for_status()
+        resp, self._resolved_url = await arr_request(
+            self.base_url,
+            self.api_key,
+            "GET",
+            f"/api/v3{path}",
+            resolved_url=self._resolved_url,
+            params=params,
+        )
         return resp.json()
 
     async def put(self, path: str, data: Any) -> Any:
-        client = await self._get_client()
-        resp = await client.put(f"/api/v3{path}", json=data)
-        resp.raise_for_status()
+        resp, self._resolved_url = await arr_request(
+            self.base_url,
+            self.api_key,
+            "PUT",
+            f"/api/v3{path}",
+            resolved_url=self._resolved_url,
+            json=data,
+        )
         return resp.json()
 
     async def post(self, path: str, data: Any = None, **params: Any) -> Any:
-        client = await self._get_client()
-        resp = await client.post(f"/api/v3{path}", json=data, params=params)
-        resp.raise_for_status()
+        resp, self._resolved_url = await arr_request(
+            self.base_url,
+            self.api_key,
+            "POST",
+            f"/api/v3{path}",
+            resolved_url=self._resolved_url,
+            json=data,
+            params=params,
+        )
         return resp.json()
 
     async def get_movies(self) -> list[dict]:

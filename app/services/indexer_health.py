@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.arr_http import friendly_connection_error, normalize_arr_url
 from app.clients.prowlarr import ProwlarrClient
 from app.clients.pushover import PushoverClient
 from app.clients.radarr import RadarrClient
@@ -458,11 +459,11 @@ async def fetch_indexer_overview(
     overview["states"] = {s.indexer_name: s for s in states.scalars().all()}
 
     prowlarr = ProwlarrClient(
-        base_url=settings.get("prowlarr_url"),
-        api_key=settings.get("prowlarr_api_key"),
+        base_url=normalize_arr_url(settings.get("prowlarr_url")),
+        api_key=(settings.get("prowlarr_api_key") or "").strip(),
     )
     if not prowlarr.configured:
-        overview["errors"]["prowlarr"] = "Prowlarr non configuré"
+        overview["errors"]["prowlarr"] = "Prowlarr non configuré — renseignez l'URL et la clé API"
         return overview
 
     overview["prowlarr_configured"] = True
@@ -525,7 +526,9 @@ async def fetch_indexer_overview(
             and (r["prowlarr_blocked"] or r["sonarr_issue"] or r["radarr_issue"])
         )
     except Exception as e:
-        overview["errors"]["prowlarr"] = str(e)
+        overview["errors"]["prowlarr"] = friendly_connection_error(
+            e, "Prowlarr", settings.get("prowlarr_url", ""),
+        )
     finally:
         await prowlarr.close()
 
