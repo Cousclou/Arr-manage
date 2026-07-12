@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.prowlarr import ProwlarrClient
 from app.clients.pushover import PushoverClient
 from app.clients.radarr import RadarrClient
 from app.clients.sonarr import SonarrClient
@@ -21,7 +22,9 @@ from app.db.session import async_session, get_db
 from app.services.runtime_config import SETTING_GROUPS, TASK_META, RuntimeConfig, iter_setting_fields
 from app.services.pending_imports import fetch_pending_imports
 from app.services.task_logger import TaskLogger, get_log_details
-from app.services.indexer_health import IndexerHealthService, fetch_indexer_overview
+from app.services.dashboard_data import fetch_recent_grabs
+from app.services.indexer_health import fetch_indexer_overview
+from app.services.wanted_search import WantedSearchService, list_wanted_preview
 from app.utils.timezone import format_local
 
 logger = logging.getLogger(__name__)
@@ -71,9 +74,14 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     cfg = RuntimeConfig(db)
     settings = await cfg.all_settings()
 
-    sonarr_ok = radarr_ok = False
+    sonarr_ok = radarr_ok = prowlarr_ok = False
+    prowlarr_enabled = settings.get("prowlarr_enabled") == "true"
     sonarr = SonarrClient(base_url=settings.get("sonarr_url"), api_key=settings.get("sonarr_api_key"))
     radarr = RadarrClient(base_url=settings.get("radarr_url"), api_key=settings.get("radarr_api_key"))
+    prowlarr = ProwlarrClient(
+        base_url=settings.get("prowlarr_url"),
+        api_key=settings.get("prowlarr_api_key"),
+    )
     pushover = PushoverClient(
         user_key=settings.get("pushover_user_key"),
         api_token=settings.get("pushover_api_token"),
@@ -95,6 +103,20 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     finally:
         await radarr.close()
 
+    if prowlarr_enabled and prowlarr.configured:
+        try:
+            await prowlarr.get_system_status()
+            prowlarr_ok = True
+        except Exception:
+            pass
+        finally:
+            await prowlarr.close()
+    else:
+        await prowlarr.close()
+
+    indexer_overview = await fetch_indexer_overview(cfg, db)
+    recent_grabs = await fetch_recent_grabs(settings)
+
     logs, _ = await _fetch_logs(db, limit=10)
     service_stats = await _service_counts(db)
     pending_count = await _pending_count(db)
@@ -110,6 +132,10 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
             "page": "dashboard",
             "sonarr_ok": sonarr_ok,
             "radarr_ok": radarr_ok,
+            "prowlarr_ok": prowlarr_ok,
+            "prowlarr_enabled": prowlarr_enabled,
+            "indexer_overview": indexer_overview,
+            "recent_grabs": recent_grabs,
             "pushover_ok": pushover.configured,
             "dry_run": settings.get("dry_run") == "true",
             "logs": logs,

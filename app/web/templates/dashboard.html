@@ -39,6 +39,34 @@
   </div>
   <div class="card stat-card">
     <div class="stat-header">
+      <span class="stat-label">Prowlarr</span>
+      {% if prowlarr_enabled %}{{ status_dot(prowlarr_ok) }}{% else %}{{ status_dot(false) }}{% endif %}
+    </div>
+    <p class="stat-value">
+      {% if not prowlarr_enabled %}Désactivé
+      {% elif prowlarr_ok %}Connecté
+      {% elif indexer_overview.prowlarr_configured %}Hors ligne
+      {% else %}Non configuré{% endif %}
+    </p>
+    <p class="stat-hint"><a href="/settings?tab=prowlarr" class="link">Configurer →</a></p>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-header">
+      <span class="stat-label">Indexeurs</span>
+      {% if indexer_overview.issue_count > 0 %}{{ badge(indexer_overview.issue_count, 'destructive') }}{% endif %}
+    </div>
+    <p class="stat-value">
+      {% if not prowlarr_enabled or not indexer_overview.prowlarr_configured %}—
+      {% elif indexer_overview.issue_count > 0 %}{{ indexer_overview.issue_count }} problème(s)
+      {% else %}OK{% endif %}
+    </p>
+    <p class="stat-hint">
+      {{ indexer_overview.indexers | selectattr('enabled') | list | length }} actifs ·
+      <a href="/indexers" class="link">Détails →</a>
+    </p>
+  </div>
+  <div class="card stat-card">
+    <div class="stat-header">
       <span class="stat-label">Pushover</span>
       {{ status_dot(pushover_ok) }}
     </div>
@@ -60,6 +88,44 @@
     <p class="stat-hint"><a href="/pending-imports" class="link">Action manuelle →</a></p>
   </div>
 </section>
+
+{% if prowlarr_enabled and indexer_overview.indexers %}
+<div class="card mb-6">
+  <div class="card-header flex-between">
+    <div>
+      <h2 class="card-title">État des indexeurs</h2>
+      <p class="card-description">Synchronisé via Prowlarr · indexeurs désactivés non comptés</p>
+    </div>
+    <a href="/indexers" class="btn btn-outline btn-sm">Gérer</a>
+  </div>
+  <div class="card-content p-0">
+    <div class="wanted-table-wrap">
+      <table class="table table-compact">
+        <thead>
+          <tr>
+            <th>Indexeur</th>
+            <th>Prowlarr</th>
+            <th>Sonarr</th>
+            <th>Radarr</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for idx in indexer_overview.indexers if idx.enabled and not idx.excluded %}
+          <tr>
+            <td class="font-medium">{{ idx.name }}</td>
+            <td>{% if idx.prowlarr_blocked %}{{ badge('Bloqué', 'destructive') }}{% else %}{{ badge('OK', 'success') }}{% endif %}</td>
+            <td>{% if idx.sonarr_issue %}{{ badge('KO', 'destructive') }}{% else %}{{ badge('OK', 'outline') }}{% endif %}</td>
+            <td>{% if idx.radarr_issue %}{{ badge('KO', 'destructive') }}{% else %}{{ badge('OK', 'outline') }}{% endif %}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="empty-state">Aucun indexeur actif à surveiller</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <div class="grid-2">
   <div class="card">
@@ -106,6 +172,41 @@
       </div>
       <a href="/logs" class="btn btn-ghost btn-sm mt-4">Voir tout le journal →</a>
     </div>
+  </div>
+</div>
+
+<div class="card mt-6">
+  <div class="card-header flex-between">
+    <div>
+      <h2 class="card-title">Dernières prises</h2>
+      <p class="card-description">Historique des grabs Sonarr et Radarr</p>
+    </div>
+  </div>
+  <div class="card-content p-0">
+    <table class="table table-compact">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Média</th>
+          <th>Release</th>
+          <th>Qualité</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for grab in recent_grabs %}
+        <tr>
+          <td><span class="service-tag service-{{ grab.service }}">{{ grab.service }}</span></td>
+          <td class="font-medium">{{ grab.title }}</td>
+          <td class="text-sm text-muted">{{ grab.detail[:70] }}{% if grab.detail|length > 70 %}…{% endif %}</td>
+          <td class="text-sm text-muted">{{ grab.quality or '—' }}</td>
+          <td class="text-sm text-muted">{% if grab.date %}{{ grab.date | local_dt }}{% else %}—{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty-state">Aucune prise récente</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 

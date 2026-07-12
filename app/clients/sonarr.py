@@ -70,8 +70,11 @@ class SonarrClient:
     async def get_queue(self) -> dict:
         return await self.get("/queue", page=1, pageSize=100, includeUnknownSeriesItems=True)
 
-    async def get_history(self, page: int = 1, page_size: int = 50) -> dict:
-        return await self.get("/history", page=page, pageSize=page_size)
+    async def get_history(self, page: int = 1, page_size: int = 50, event_type: str | None = None) -> dict:
+        params: dict = {"page": page, "pageSize": page_size}
+        if event_type:
+            params["eventType"] = event_type
+        return await self.get("/history", **params)
 
     async def get_episode_file(self, file_id: int) -> dict:
         return await self.get(f"/episodefile/{file_id}")

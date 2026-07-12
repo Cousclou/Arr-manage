@@ -109,7 +109,7 @@ body {
 .flex-center { display: flex; justify-content: center; }
 
 /* Stats grid */
-.stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
 .stat-card { padding: 1.25rem; }
 .stat-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
 .stat-label { font-size: 0.875rem; font-weight: 500; color: hsl(var(--muted-foreground)); }
