@@ -126,3 +126,10 @@ class RadarrClient:
             return False
         except Exception:
             return False
+
+    async def test_all_indexers(self) -> bool:
+        try:
+            await self.post("/indexer/testall")
+            return True
+        except Exception:
+            return False

@@ -13,14 +13,20 @@
   </div>
   <div class="header-actions">
     <form method="post" action="/indexers/run" class="inline-form">
-      <button type="submit" class="btn btn-primary btn-sm">{{ icon('zap', 14) }} Lancer le check</button>
+      <button type="submit" class="btn btn-primary btn-sm">{{ icon('zap', 14) }} Remédiation KO</button>
+    </form>
+    <form method="post" action="/indexers/run-global" class="inline-form">
+      <button type="submit" class="btn btn-outline btn-sm">{{ icon('search', 14) }} Check global</button>
     </form>
     <a href="/settings?tab=prowlarr" class="btn btn-outline btn-sm">{{ icon('settings', 14) }} Configurer</a>
   </div>
 </header>
 
 {% if request.query_params.get('started') %}
-<div class="alert alert-success">Vérification des indexeurs lancée en arrière-plan.</div>
+<div class="alert alert-success">Remédiation des indexeurs KO lancée en arrière-plan.</div>
+{% endif %}
+{% if request.query_params.get('global_started') %}
+<div class="alert alert-success">Check global de tous les indexeurs lancé en arrière-plan.</div>
 {% endif %}
 {% if request.query_params.get('added') %}
 <div class="alert alert-success">Indexeur exclu du monitoring.</div>

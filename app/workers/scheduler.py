@@ -22,6 +22,7 @@ INTERVAL_KEYS = {
     "anime_handler": "anime_check_interval",
     "wanted_search": "wanted_search_interval",
     "indexer_health": "indexer_health_interval",
+    "indexer_global_check": "indexer_global_check_interval",
 }
 
 

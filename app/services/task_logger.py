@@ -24,6 +24,7 @@ SERVICE_MAP = {
     "anime_handler": "anime",
     "wanted_search": "search",
     "indexer_health": "prowlarr",
+    "indexer_global_check": "prowlarr",
 }
 
 ACTION_LABELS = {
@@ -202,17 +203,24 @@ def _build_summary(task_name: str, stats: dict, truncated: bool) -> str:
         if stats.get("sonarr_notified") or stats.get("radarr_notified"):
             parts.append(f"{stats.get('sonarr_notified', 0) + stats.get('radarr_notified', 0)} alertes seeders")
     elif task_name == "indexer_health":
-        parts.append(f"{stats.get('checked', 0)} indexeurs vérifiés")
+        parts.append("remédiation ciblée")
+        parts.append(f"{stats.get('checked', 0)} indexeur(s) KO")
         if stats.get("down_arr"):
             parts.append(f"{stats['down_arr']} KO *arr")
-        if stats.get("down_prowlarr"):
-            parts.append(f"{stats['down_prowlarr']} KO Prowlarr")
         if stats.get("recovered"):
             parts.append(f"{stats['recovered']} récupérés")
         if stats.get("retested"):
-            parts.append(f"{stats['retested']} re-tests")
+            parts.append(f"{stats['retested']} re-tests ciblés")
         if stats.get("alerts"):
             parts.append(f"{stats['alerts']} alertes")
+    elif task_name == "indexer_global_check":
+        parts.append("check global")
+        if stats.get("prowlarr_testall"):
+            parts.append("Prowlarr testall OK")
+        if stats.get("sonarr_testall"):
+            parts.append("Sonarr testall OK")
+        if stats.get("radarr_testall"):
+            parts.append("Radarr testall OK")
     else:
         parts.append(str(stats))
 

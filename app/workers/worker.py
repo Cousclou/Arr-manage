@@ -78,11 +78,17 @@ async def indexer_health(ctx: dict) -> dict:
         return await service.check()
 
 
+async def indexer_global_check(ctx: dict) -> dict:
+    async with async_session() as db:
+        service = IndexerHealthService(db)
+        return await service.check_global()
+
+
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     functions = [
         sonarr_monitor, radarr_monitor, upgrade_check, import_monitor,
-        anime_handler, wanted_search, indexer_health,
+        anime_handler, wanted_search, indexer_health, indexer_global_check,
     ]
     on_startup = startup
     on_shutdown = shutdown

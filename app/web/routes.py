@@ -685,6 +685,14 @@ async def indexers_run_check():
     return RedirectResponse("/indexers?started=1", status_code=303)
 
 
+@router.post("/indexers/run-global")
+async def indexers_run_global_check():
+    redis = await create_pool(RedisSettings.from_dsn(get_settings().redis_url))
+    await redis.enqueue_job("indexer_global_check")
+    await redis.aclose()
+    return RedirectResponse("/indexers?global_started=1", status_code=303)
+
+
 @router.post("/indexers/exclude")
 async def indexers_add_exclusion(
     name: str = Form(...),

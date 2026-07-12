@@ -90,6 +90,7 @@ async def trigger_task(task_name: str) -> TriggerResponse:
         "anime_handler",
         "wanted_search",
         "indexer_health",
+        "indexer_global_check",
     }
     if task_name not in valid_tasks:
         raise HTTPException(404, f"Tâche inconnue: {task_name}")

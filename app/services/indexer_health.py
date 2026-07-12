@@ -51,11 +51,12 @@ class IndexerHealthService:
         self.config = RuntimeConfig(db)
 
     async def check(self) -> dict:
+        """Remédiation ciblée : ne teste que les indexeurs signalés KO par Sonarr/Radarr."""
         tlog = TaskLogger(self.db, "indexer_health", service="prowlarr")
         cfg = self.config
 
         if not await cfg.get_bool("task_indexer_health_enabled"):
-            await tlog.finish("skipped", "Tâche désactivée")
+            await tlog.finish("skipped", "Remédiation désactivée")
             return {"skipped": True}
 
         if not await cfg.get_bool("prowlarr_enabled"):
@@ -63,6 +64,7 @@ class IndexerHealthService:
             return {"skipped": True}
 
         stats = {
+            "mode": "remediation",
             "checked": 0,
             "down_arr": 0,
             "down_prowlarr": 0,
@@ -134,6 +136,18 @@ class IndexerHealthService:
                     finally:
                         await radarr.close()
 
+            if not down_targets:
+                tlog.detail("found", "Remédiation", None, "Aucun indexeur KO — aucun test lancé")
+                tlog.set_stats(stats)
+                await tlog.finish("success", "Aucun indexeur KO")
+                await prowlarr.close()
+                return stats
+
+            tlog.detail(
+                "progress", "Remédiation", None,
+                f"{len(down_targets)} indexeur(s) KO · tests ciblés uniquement",
+            )
+
             for norm_name, target in down_targets.items():
                 stats["checked"] += 1
                 name = target["name"]
@@ -169,7 +183,7 @@ class IndexerHealthService:
                     message_parts.append(f"{svc}: {target['services'][svc]}")
 
                 if prowlarr_blocked:
-                    tlog.detail("progress", name, prowlarr_idx.get("id"), "KO Prowlarr · re-test…")
+                    tlog.detail("progress", name, prowlarr_idx.get("id"), "KO Prowlarr · re-test ciblé…")
                     prowlarr_ok = await prowlarr.test_indexer(prowlarr_idx)
                     stats["retested"] += 1
                     if prowlarr_ok:
@@ -189,7 +203,11 @@ class IndexerHealthService:
                         tlog.detail("alert", name, prowlarr_idx.get("id"), " · ".join(message_parts))
                         continue
 
-                tlog.detail("progress", name, prowlarr_idx.get("id"), "Re-test Sonarr/Radarr…")
+                affected = list(target["arr_indexers"].keys())
+                tlog.detail(
+                    "progress", name, prowlarr_idx.get("id"),
+                    f"Re-test ciblé · {', '.join(affected)} uniquement",
+                )
 
                 if "sonarr" in target["arr_indexers"]:
                     sonarr_ok = await self._test_arr_indexer(
@@ -251,6 +269,96 @@ class IndexerHealthService:
         except Exception as e:
             logger.exception("Erreur surveillance indexeurs")
             tlog.detail("error", "Indexer health", info=str(e))
+            stats["errors"] += 1
+        finally:
+            await prowlarr.close()
+
+        tlog.set_stats(stats)
+        await tlog.finish("success")
+        return stats
+
+    async def check_global(self) -> dict:
+        """Check global : teste tous les indexeurs (testall) sur Prowlarr et *arr."""
+        tlog = TaskLogger(self.db, "indexer_global_check", service="prowlarr")
+        cfg = self.config
+
+        if not await cfg.get_bool("task_indexer_global_check_enabled"):
+            await tlog.finish("skipped", "Check global désactivé")
+            return {"skipped": True}
+
+        if not await cfg.get_bool("prowlarr_enabled"):
+            await tlog.finish("skipped", "Prowlarr désactivé")
+            return {"skipped": True}
+
+        stats = {
+            "mode": "global",
+            "prowlarr_testall": 0,
+            "sonarr_testall": 0,
+            "radarr_testall": 0,
+            "errors": 0,
+        }
+
+        prowlarr = ProwlarrClient(
+            base_url=await cfg.get("prowlarr_url"),
+            api_key=await cfg.get("prowlarr_api_key"),
+        )
+        if not prowlarr.configured:
+            await tlog.finish("skipped", "Prowlarr non configuré")
+            return {"skipped": True}
+
+        try:
+            if await cfg.get_bool("indexer_global_check_prowlarr"):
+                tlog.detail("progress", "Prowlarr", None, "Test global de tous les indexeurs…")
+                if await prowlarr.test_all_indexers():
+                    stats["prowlarr_testall"] = 1
+                    tlog.detail("found", "Prowlarr", None, "Test global terminé")
+                else:
+                    stats["errors"] += 1
+                    tlog.detail("alert", "Prowlarr", None, "Test global échoué")
+
+            if await cfg.get_bool("indexer_global_check_sonarr"):
+                sonarr = SonarrClient(
+                    base_url=await cfg.get("sonarr_url"),
+                    api_key=await cfg.get("sonarr_api_key"),
+                )
+                if sonarr.configured:
+                    try:
+                        tlog.detail("progress", "Sonarr", None, "Test global de tous les indexeurs…")
+                        if await sonarr.test_all_indexers():
+                            stats["sonarr_testall"] = 1
+                            tlog.detail("found", "Sonarr", None, "Test global terminé")
+                        else:
+                            stats["errors"] += 1
+                            tlog.detail("alert", "Sonarr", None, "Test global échoué")
+                    except Exception as e:
+                        stats["errors"] += 1
+                        tlog.detail("error", "Sonarr", info=str(e))
+                    finally:
+                        await sonarr.close()
+
+            if await cfg.get_bool("indexer_global_check_radarr"):
+                radarr = RadarrClient(
+                    base_url=await cfg.get("radarr_url"),
+                    api_key=await cfg.get("radarr_api_key"),
+                )
+                if radarr.configured:
+                    try:
+                        tlog.detail("progress", "Radarr", None, "Test global de tous les indexeurs…")
+                        if await radarr.test_all_indexers():
+                            stats["radarr_testall"] = 1
+                            tlog.detail("found", "Radarr", None, "Test global terminé")
+                        else:
+                            stats["errors"] += 1
+                            tlog.detail("alert", "Radarr", None, "Test global échoué")
+                    except Exception as e:
+                        stats["errors"] += 1
+                        tlog.detail("error", "Radarr", info=str(e))
+                    finally:
+                        await radarr.close()
+
+        except Exception as e:
+            logger.exception("Erreur check global indexeurs")
+            tlog.detail("error", "Check global", info=str(e))
             stats["errors"] += 1
         finally:
             await prowlarr.close()
